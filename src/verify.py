@@ -225,7 +225,10 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir):
     for name in sorted(os.listdir(scenarios_dir)):
         if name.endswith(".json"):
             with open(os.path.join(scenarios_dir, name)) as f:
-                evidence["scenarios"].append(run_scenario(json.load(f), checkout_cwd, pid_file))
+                data = json.load(f)
+            # a file may hold one scenario or a list of scenarios
+            for scenario in (data if isinstance(data, list) else [data]):
+                evidence["scenarios"].append(run_scenario(scenario, checkout_cwd, pid_file))
     # provenance uses the health check already captured by the scenario runner
     try:
         port = free_port()
