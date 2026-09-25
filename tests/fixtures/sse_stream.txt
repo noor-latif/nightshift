@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"reasoning_content":"think"}}]}
+data: {"choices":[{"delta":{"reasoning_content":"ing..."}}]}
+data: {"choices":[{"delta":{"content":"OK"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":26,"completion_tokens":15,"total_tokens":41,"cost":0.00001,"buyer_cost_micro":0}}
+data: [DONE]

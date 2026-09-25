@@ -1,0 +1,73 @@
+[
+  {
+    "name": "paste-round-trip",
+    "description": "POST a paste then GET it back by id",
+    "assertions": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:{{port}}/paste",
+        "body": {
+          "content": "hello factory"
+        },
+        "expected_status": 201,
+        "expect_body_fragment": null,
+        "save": "paste_id"
+      },
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:{{port}}/paste/{{paste_id}}",
+        "expected_status": 200,
+        "expect_body_fragment": "hello factory"
+      }
+    ]
+  },
+  {
+    "name": "malformed-body-400",
+    "description": "POST with malformed JSON body must 400",
+    "assertions": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:{{port}}/paste",
+        "raw_body": "{not json",
+        "expected_status": 400
+      }
+    ]
+  },
+  {
+    "name": "nonstring-content-400",
+    "description": "POST with non-string content must 400",
+    "assertions": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:{{port}}/paste",
+        "body": {
+          "content": 42
+        },
+        "expected_status": 400
+      }
+    ]
+  },
+  {
+    "name": "unknown-id-404",
+    "description": "GET of an unknown paste id must 404",
+    "assertions": [
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:{{port}}/paste/does-not-exist",
+        "expected_status": 404
+      }
+    ]
+  },
+  {
+    "name": "health-revision",
+    "description": "/health reports the candidate git revision",
+    "assertions": [
+      {
+        "method": "GET",
+        "url": "http://127.0.0.1:{{port}}/health",
+        "expected_status": 200,
+        "expect_body_fragment": "{{revision}}"
+      }
+    ]
+  }
+]

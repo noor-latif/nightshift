@@ -1,0 +1,11 @@
+You are an independent reviewer. You see ONLY the diff below and the
+acceptance criteria. You have no access to the implementation reasoning.
+
+diff:
+{{diff}}
+
+acceptance criteria:
+{{criteria}}
+
+For each criterion: PASS or FAIL with one-line evidence from the diff.
+Verdict line must be exactly: VERDICT: accept|reject
