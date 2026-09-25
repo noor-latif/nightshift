@@ -12,6 +12,7 @@ never a pass (P9).
 import http.client
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -25,12 +26,22 @@ class Hold(Exception):
 
 
 def run_unit_tests(cwd):
-    """Oracle 1: the candidate's own suite. Returns (ok, output)."""
-    r = subprocess.run(
-        ["python3", "-m", "unittest", "discover", "-s", "tests"],
-        cwd=cwd, capture_output=True, text=True, timeout=600,
-    )
-    return r.returncode == 0, (r.stdout + r.stderr)[-8000:]
+    """Oracle 1: the candidate's own suite. Returns (ok, output).
+
+    Repos without a tests/ dir (toy-product) discover *_test.py from the
+    root — the calibration harness's exact invocation. Zero tests discovered
+    is a FAIL, never a vacuous pass (L-004: an oracle that sees nothing is
+    not green).
+    """
+    if os.path.isdir(os.path.join(cwd, "tests")):
+        cmd = ["python3", "-m", "unittest", "discover", "-s", "tests"]
+    else:
+        cmd = ["python3", "-m", "unittest", "discover", "-s", ".", "-p", "*_test.py"]
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=600)
+    out = (r.stdout + r.stderr)[-8000:]
+    m = re.search(r"Ran (\d+) test", out)
+    ran = int(m.group(1)) if m else 0
+    return r.returncode == 0 and ran > 0, out
 
 
 def free_port(prefer=None):

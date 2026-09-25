@@ -7,16 +7,22 @@ Failure model is durable JSON state (Sortie park semantics).
 import json
 import os
 import signal
+import subprocess
+import sys
 import time
 import urllib.request
 
 from settings import (
     EVIDENCE_DIR,
+    GITHUB_REPO,
     HEARTBEAT_PATH,
     HEARTBEAT_TTL_S,
     LAP_WALLCLOCK_LIMIT_S,
     NTFY_URL,
+    STATE_DIR,
 )
+
+RESULT_PATH = os.path.join(STATE_DIR, "lap-result.json")
 
 
 def notify(text, title="nightshift", url=NTFY_URL, opener=None):
@@ -101,6 +107,12 @@ def handle_lap_end(state, outcome, now, deps):
     if outcome in ("crash", "timeout"):
         deps["kill_lap"](lap)
     disposition = handle_outcome(outcome, issue, state, now)
+    if disposition == "retry":
+        # release the claim so the retry can re-acquire the same issue
+        try:
+            os.remove(lap["claim_path"])
+        except OSError:
+            pass
     notify_fn = deps["notify"]
     if outcome == "success":
         notify_fn("lap issue %d: GREEN" % issue)
@@ -129,8 +141,11 @@ def tick(state, now, deps):
                     return events
             # else: healthy and within budget → let it run
         else:
-            disposition, halt = handle_lap_end(state, "crash", now, deps)
-            events.append("crash:" + disposition)
+            # a dead lap may have finished cleanly: the result file says so
+            get_outcome = deps.get("lap_outcome")
+            outcome = get_outcome(lap) if get_outcome else "crash"
+            disposition, halt = handle_lap_end(state, outcome, now, deps)
+            events.append("%s:%s" % (outcome, disposition))
             if halt:
                 events.append("HALT")
                 return events
@@ -150,3 +165,61 @@ def tick(state, now, deps):
 
     save_state(state, deps["state_path"])
     return events
+
+
+def main():
+    """Real loop: claim -> dispatch -> watch -> park/retry per selector budget."""
+    from selector import OUTCOMES, claim_next
+
+    state_path = os.path.join(STATE_DIR, "state.json")
+    os.makedirs(STATE_DIR, exist_ok=True)
+
+    def start_lap(issue, lap):
+        logf = open(os.path.join(STATE_DIR, "lap-%d.log" % issue), "a")
+        proc = subprocess.Popen([sys.executable, "src/lap.py", str(issue)],
+                                stdout=logf, stderr=subprocess.STDOUT)
+        lap["pid"] = proc.pid
+
+    def kill_lap(lap):
+        pid = lap.get("pid")
+        if pid:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+
+    def lap_outcome(lap):
+        """A dead lap's terminal outcome comes from its result file.
+
+        Missing/unparseable/foreign result = crash. A child that died after
+        writing 'timeout' parks (never re-dispatched) per selector.
+        """
+        try:
+            with open(RESULT_PATH) as f:
+                r = json.load(f)
+        except (OSError, ValueError):
+            return "crash"
+        if r.get("issue") != lap["issue"] or r.get("outcome") not in OUTCOMES:
+            return "crash"
+        return r["outcome"]
+
+    deps = {
+        "state_path": state_path,
+        "notify": notify,
+        "claim": lambda now: claim_next(GITHUB_REPO, issues_dir=os.path.join(STATE_DIR, "claims")),
+        "start_lap": start_lap,
+        "kill_lap": kill_lap,
+        "lap_outcome": lap_outcome,
+        "reconcile": lambda now: [],
+    }
+    while True:
+        state = load_state(state_path)
+        events = tick(state, time.time(), deps)
+        if "HALT" in events:
+            notify("supervisor HALT: " + ",".join(events))
+            break
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()
