@@ -402,7 +402,11 @@ def run(issue):
         lap.event("verify-green")
         lap.check_clock()
 
-        _git(["push", "-u", "origin", "agent/issue-%d" % issue], worktree)
+        # agent/issue-<n> branches are factory-owned; a crashed lap after the
+        # push leaves the remote branch ahead, and a retried lap rebuilds its
+        # local branch from origin/main — plain push is then rejected forever.
+        # --force-with-lease keeps the retry deterministic.
+        _git(["push", "--force-with-lease", "-u", "origin", "agent/issue-%d" % issue], worktree)
         m = merge.full_merge(issue, GITHUB_REPO, worktree, {"verdict": "pass"})
         if not m.get("merged"):
             return finish(lap, "failure", gate="merge", error=m)
