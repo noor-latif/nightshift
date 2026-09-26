@@ -26,14 +26,19 @@ RESULT_PATH = os.path.join(STATE_DIR, "lap-result.json")
 
 
 def notify(text, title="nightshift", url=NTFY_URL, opener=None):
-    """One ntfy POST per terminal state. Inline by design, not a module."""
-    data = json.dumps({"topic": url.rstrip("/").rsplit("/", 1)[-1],
-                       "title": title, "message": text}).encode()
-    req = urllib.request.Request(url, data=data, method="POST")
-    open_fn = opener.open if opener else urllib.request.urlopen
-    resp = open_fn(req, timeout=10)
-    resp.read()
-    return resp.status
+    """One ntfy POST per terminal state. Inline by design, not a module.
+    Best-effort: a failed notification must never kill a lap."""
+    try:
+        data = json.dumps({"topic": url.rstrip("/").rsplit("/", 1)[-1],
+                           "title": title, "message": text}).encode()
+        req = urllib.request.Request(url, data=data, method="POST")
+        open_fn = opener.open if opener else urllib.request.urlopen
+        resp = open_fn(req, timeout=10)
+        resp.read()
+        return resp.status
+    except OSError as e:
+        print("notify failed: %s" % e, file=sys.stderr, flush=True)
+        return None
 
 
 def pid_alive(pid):

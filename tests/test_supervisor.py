@@ -117,3 +117,20 @@ class TestSupervisorStateMachine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+class TestNotifyGuard(unittest.TestCase):
+    """notify is best-effort: an ntfy outage never kills a lap."""
+    def test_notify_swallows_transport_failure(self):
+        import urllib.error
+        def boom(req, timeout):
+            raise urllib.error.URLError("ntfy down")
+        status = supervisor.notify("x", opener=type("O", (), {"open": staticmethod(boom)})())
+        self.assertIsNone(status)
+    def test_notify_success_returns_status(self):
+        class Resp:
+            status = 200
+            def read(self):
+                return b"ok"
+        def ok(req, timeout):
+            return Resp()
+        status = supervisor.notify("x", opener=type("O", (), {"open": staticmethod(ok)})())
+        self.assertEqual(status, 200)
