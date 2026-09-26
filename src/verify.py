@@ -105,16 +105,16 @@ def wait_ready(port, deadline_s=READY_TIMEOUT_S):
     raise Hold("candidate never became ready: %s" % last_err)
 
 
-def http_req(method, host, port, path, body=None, raw_body=None):
+def http_req(method, host, port, path, body=None, raw_body=None, headers=None):
     conn = http.client.HTTPConnection(host, port, timeout=10)
     payload = None
-    headers = {}
+    hdrs = dict(headers or {})
     if raw_body is not None:
         payload = raw_body.encode()
     elif body is not None:
         payload = json.dumps(body).encode()
-        headers["Content-Type"] = "application/json"
-    conn.request(method, path, payload, headers)
+        hdrs.setdefault("Content-Type", "application/json")
+    conn.request(method, path, payload, hdrs)
     resp = conn.getresponse()
     data = resp.read().decode("utf-8", errors="replace")
     conn.close()
@@ -153,6 +153,7 @@ def evaluate_assertion(assertion, port, saved, revision=None):
         status, body = http_req(
             assertion["method"], host, p, path,
             body=assertion.get("body"), raw_body=assertion.get("raw_body"),
+            headers=assertion.get("headers"),
         )
     except OSError as e:
         return {"assertion": assertion["url"], "status": "HOLD", "detail": str(e)}
@@ -214,7 +215,18 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
     return results
 
 
-def verify_candidate(checkout_cwd, pid_file, scenarios_dir):
+def scenario_paths(scenarios_dir, issue=None):
+    """Files for this lap: global .json always, plus issue-<n>.json when it matches.
+
+    Per-issue oracles must not run against candidates that don't address them;
+    a missing issue-<n>.json means the lap runs global scenarios only.
+    """
+    names = sorted(n for n in os.listdir(scenarios_dir) if n.endswith(".json"))
+    return [os.path.join(scenarios_dir, n) for n in names
+            if not n.startswith("issue-")
+            or (issue is not None and n == "issue-%d.json" % issue)]
+
+def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None):
     """Oracle-first ladder. Green only if every check ran and passed."""
     evidence = {"unit": {}, "scenarios": [], "provenance": {}}
     ok, out = run_unit_tests(checkout_cwd)
@@ -222,13 +234,12 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir):
     if not ok:
         evidence["verdict"] = "fail"
         return evidence
-    for name in sorted(os.listdir(scenarios_dir)):
-        if name.endswith(".json"):
-            with open(os.path.join(scenarios_dir, name)) as f:
-                data = json.load(f)
-            # a file may hold one scenario or a list of scenarios
-            for scenario in (data if isinstance(data, list) else [data]):
-                evidence["scenarios"].append(run_scenario(scenario, checkout_cwd, pid_file))
+    for path in scenario_paths(scenarios_dir, issue):
+        with open(path) as f:
+            data = json.load(f)
+        # a file may hold one scenario or a list of scenarios
+        for scenario in (data if isinstance(data, list) else [data]):
+            evidence["scenarios"].append(run_scenario(scenario, checkout_cwd, pid_file))
     # provenance uses the health check already captured by the scenario runner
     try:
         port = free_port()

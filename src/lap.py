@@ -260,7 +260,7 @@ def run(issue):
 
         pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
         scenarios_dir = os.path.join(os.path.dirname(__file__), "..", "scenarios")
-        evidence = verify.verify_candidate(worktree, pid_file, scenarios_dir)
+        evidence = verify.verify_candidate(worktree, pid_file, scenarios_dir, issue=issue)
         lap._dump("verify.json", evidence)
         if evidence["verdict"] != "pass":
             return finish(lap, "failure", gate="verify", error=evidence)

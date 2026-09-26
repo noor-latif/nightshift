@@ -173,5 +173,86 @@ class TestVerifyAgainstFixture(unittest.TestCase):
         self.assertTrue(ok)
 
 
+class TestHeadersPassThrough(unittest.TestCase):
+    """Scenario `headers` must reach the wire verbatim; absent = unchanged."""
+
+    @classmethod
+    def setUpClass(cls):
+        seen = {}
+
+        class Echo(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                seen.update(dict(self.headers))
+                self.send_response(200)
+                self.end_headers()
+
+        cls.server = HTTPServer(("127.0.0.1", 0), Echo)
+        cls.port = cls.server.server_address[1]
+        t = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        t.start()
+        cls.seen = seen
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def test_headers_reach_server(self):
+        a = {"method": "GET", "url": "http://127.0.0.1:%d/echo" % self.port,
+             "expected_status": 200, "headers": {"X-Probe": "ping"}}
+        self.seen.clear()
+        check = verify.evaluate_assertion(a, self.port, {})
+        self.assertEqual(check["status"], "pass")
+        self.assertEqual(self.seen.get("X-Probe"), "ping")
+
+    def test_content_length_override_sent_verbatim(self):
+        # scenario contract: the value must go on the wire exactly as written
+        a = {"method": "GET", "url": "http://127.0.0.1:%d/echo" % self.port,
+             "expected_status": 200, "headers": {"Content-Length": "999"}}
+        self.seen.clear()
+        check = verify.evaluate_assertion(a, self.port, {})
+        self.assertEqual(check["status"], "pass")
+        self.assertEqual(self.seen.get("Content-Length"), "999")
+
+    def test_absent_headers_unchanged(self):
+        a = {"method": "GET", "url": "http://127.0.0.1:%d/echo" % self.port,
+             "expected_status": 200}
+        self.seen.clear()
+        check = verify.evaluate_assertion(a, self.port, {})
+        self.assertEqual(check["status"], "pass")
+        self.assertNotIn("X-Probe", self.seen)
+
+class TestScenarioSelection(unittest.TestCase):
+    """issue-<n>.json runs only for its issue; global files always run."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        for name in ("toy-product.json", "issue-2.json"):
+            with open(os.path.join(self.dir, name), "w") as f:
+                f.write("[]")
+
+    def test_issue_file_runs_only_for_its_issue(self):
+        import verify
+        paths = verify.scenario_paths(self.dir, issue=2)
+        self.assertEqual([os.path.basename(p) for p in paths],
+                         ["issue-2.json", "toy-product.json"])
+
+    def test_other_issue_skips_foreign_file(self):
+        import verify
+        paths = verify.scenario_paths(self.dir, issue=3)
+        self.assertEqual([os.path.basename(p) for p in paths], ["toy-product.json"])
+
+    def test_no_issue_runs_global_only(self):
+        import verify
+        paths = verify.scenario_paths(self.dir)
+        self.assertEqual([os.path.basename(p) for p in paths], ["toy-product.json"])
+
+    def test_missing_issue_file_is_backward_compatible(self):
+        import verify
+        paths = verify.scenario_paths(self.dir, issue=9)
+        self.assertEqual([os.path.basename(p) for p in paths], ["toy-product.json"])
+
 if __name__ == "__main__":
     unittest.main()
