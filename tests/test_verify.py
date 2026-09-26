@@ -27,8 +27,9 @@ class ToyApp(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self):
+        self.path = self.path.split("?", 1)[0]  # query strings do not route
         if self.path == "/health":
-            self._send(200, {"revision": self.revision})
+            self._send(200, {"status": "ok", "revision": self.revision})
         elif self.path.startswith("/paste/"):
             pid = self.path.rsplit("/", 1)[1]
             if pid in self.server.pastes:
@@ -42,15 +43,19 @@ class ToyApp(BaseHTTPRequestHandler):
         if self.path != "/paste":
             self._send(404, {"error": "not found"})
             return
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length).decode()
+        hdr = self.headers.get("Content-Length")
+        if not hdr or not hdr.strip():
+            self._send(411, {"error": "Content-Length required"})
+            return
+        raw = self.rfile.read(int(hdr)).decode()
         try:
             data = json.loads(raw)
         except ValueError:
             self._send(400, {"error": "malformed"})
             return
-        if not isinstance(data.get("content"), str):
-            self._send(400, {"error": "content must be a string"})
+        content = data.get("content")
+        if not isinstance(content, str) or content == "":
+            self._send(400, {"error": "content must be a non-empty string"})
             return
         pid = "a%d" % (len(self.server.pastes) + 1)  # base64url-style: may start with a letter
         self.server.pastes[pid] = data["content"]
