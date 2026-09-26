@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -184,3 +185,33 @@ class TestParkAndContinue(unittest.TestCase):
         session_started = 0.0
         now = supervisor.LAP_WALLCLOCK_LIMIT_S + 1
         self.assertTrue(now - session_started > supervisor.LAP_WALLCLOCK_LIMIT_S)
+
+    def test_idle_with_open_pr_issue_blocks_not_drains(self):
+        deps = fake_deps(self.tmp, self.notify, claim_result=None)
+        state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
+        state["issues"] = {"9": {"retries": 1, "disposition": "retry"}}
+        events = supervisor.tick(state, self.now, deps)
+        self.assertIn("dispatch:idle", events)
+        self.assertIn("BLOCKED:9", events)
+        self.assertNotIn("DRAIN", ",".join(events))
+
+    def test_blocked_exit_nonzero_drained_exit_zero(self):
+        # main-loop: BLOCKED -> exit 1; DRAIN -> clean break (exit 0)
+        def run_main(events):
+            with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+                f.write("""
+import sys
+sys.path.insert(0, %r)
+import supervisor
+supervisor.tick = lambda state, now, deps: %r
+supervisor.load_state = lambda p: {}
+supervisor.save_state = lambda s, p: None
+supervisor.LAP_WALLCLOCK_LIMIT_S = 10**9
+supervisor.main()
+""" % (os.path.join(os.path.dirname(__file__), "..", "src"), events))
+            r = subprocess.run([sys.executable, f.name], capture_output=True, text=True)
+            os.unlink(f.name)
+            return r.returncode
+
+        self.assertEqual(run_main(["dispatch:idle", "BLOCKED:9"]), 1)
+        self.assertEqual(run_main(["dispatch:idle", "DRAIN:0 parked, 0 merged"]), 0)

@@ -122,3 +122,41 @@ class TestCheckoutFiles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_prefixless_diff_accepted_and_normalized(self):
+        text = ("```diff\n"
+                "diff --git app.py app.py\n"
+                "--- app.py\n"
+                "+++ app.py\n"
+                "@@ -1 +1 @@\n"
+                "-x = 1\n"
+                "+x = 2\n"
+                "```\n")
+        out = lap.extract_diff(text)
+        self.assertIn("--- a/app.py", out)
+        self.assertIn("+++ b/app.py", out)
+
+    def test_prefixless_without_diff_git_line_accepted(self):
+        text = ("```\n"
+                "--- app.py\n"
+                "+++ app.py\n"
+                "@@ -1 +1 @@\n"
+                "-x = 1\n"
+                "+x = 2\n"
+                "```\n")
+        out = lap.extract_diff(text)
+        self.assertIn("+++ b/app.py", out)
+
+    def test_dev_null_left_alone(self):
+        text = ("```diff\n"
+                "--- /dev/null\n"
+                "+++ b/new.py\n"
+                "@@ -0,0 +1 @@\n"
+                "+x = 1\n"
+                "```\n")
+        out = lap.extract_diff(text)
+        self.assertIn("--- /dev/null", out)
+
+    def test_prose_line_not_treated_as_header(self):
+        text = "```\nsome --- dashes and +++ pluses in prose\n```\n"
+        self.assertIsNone(lap.extract_diff(text))

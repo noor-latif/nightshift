@@ -164,9 +164,14 @@ def tick(state, now, deps):
             events.append("dispatch:" + d)
             if d == "idle":
                 issues = state.get("issues", {})
+                blocked = [int(n) for n, r in issues.items()
+                           if r.get("disposition") not in ("parked", "timeout-park", "merged")]
                 parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
                 merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
-                events.append("DRAIN:%d parked, %d merged" % (parked, merged))
+                if blocked:
+                    events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
+                else:
+                    events.append("DRAIN:%d parked, %d merged" % (parked, merged))
 
     # reconcile: reap claims for issues with no live lap (supervisor restart)
     for path, claim in deps.get("reconcile", lambda now: [])(now):
@@ -240,6 +245,10 @@ def main():
         if any(e.startswith("DRAIN") for e in events):
             notify("queue drained: " + next(e[6:] for e in events if e.startswith("DRAIN")))
             break
+        if any(e.startswith("BLOCKED") for e in events):
+            blocked = next(e[8:] for e in events if e.startswith("BLOCKED"))
+            notify("queue blocked: issue %s open PR or live claim" % blocked)
+            sys.exit(1)
         if now - session_started > LAP_WALLCLOCK_LIMIT_S:
             notify("supervisor HALT: session wallclock %ds exceeded" % LAP_WALLCLOCK_LIMIT_S)
             break

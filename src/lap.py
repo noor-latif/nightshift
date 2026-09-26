@@ -113,9 +113,29 @@ def criteria_from(body):
 
 
 def extract_diff(text):
-    """Pull the diff out of model prose: all fenced diff blocks, else a bare diff."""
-    blocks = [b.strip() for b in re.findall(r"```(?:diff)?\n(.*?)```", text, re.S)
-              if "--- a/" in b or "+++ b/" in b]
+    """Pull the diff out of model prose: all fenced diff blocks, else a bare diff.
+
+    Accepts prefix-less headers (--- app.py) — git guesses p=0 for those — and
+    normalizes every ---/+++ path to the a/ b/ form so a patch mixing
+    prefixed and prefix-less sections can't trip git's sticky p-value guess
+    (apply at the wrong path or a stray b/ dir). /dev/null stays as-is.
+    """
+    def normalize(block):
+        lines = []
+        for line in block.split("\n"):
+            m = re.match(r"^(---|\+\+\+) (.+)$", line)
+            if m:
+                sign, rest = m.groups()
+                path, tab, tail = rest.partition("\t")
+                if path != "/dev/null" and not path.startswith(("a/", "b/")):
+                    path = ("a/" if sign == "---" else "b/") + path
+                line = "%s %s%s" % (sign, path, "\t" + tail if tab else "")
+            lines.append(line)
+        return "\n".join(lines)
+
+    blocks = [normalize(b.strip()) for b in re.findall(r"```(?:diff)?\n(.*?)```", text, re.S)
+              if (any(l.startswith("--- ") for l in b.split("\n"))
+                  and any(l.startswith("+++ ") for l in b.split("\n")))]
     if blocks:
         return "\n".join(b + "\n" for b in blocks)
     m = re.search(r"^diff --git.*", text, re.S | re.M)
@@ -323,7 +343,11 @@ def run(issue):
     except LapTimeout as e:
         finish(lap, "timeout", error=str(e))
     except Exception as e:  # supervisor classifies via the result file
-        finish(lap, "crash", error="%s: %s" % (type(e).__name__, e))
+        stderr = getattr(e, "stderr", "")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", "replace")
+        finish(lap, "crash", error="%s: %s%s" % (
+            type(e).__name__, e, ("\n" + stderr.strip()[-1500:]) if stderr else ""))
     finally:
         lap._hb_stop.set()
         if worktree:
