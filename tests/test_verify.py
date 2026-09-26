@@ -30,6 +30,8 @@ class ToyApp(BaseHTTPRequestHandler):
         self.path = self.path.split("?", 1)[0]  # query strings do not route
         if self.path == "/health":
             self._send(200, {"status": "ok", "revision": self.revision})
+        elif self.path == "/stats":
+            self._send(200, {"pastes": len(self.server.pastes)})
         elif self.path.startswith("/paste/"):
             pid = self.path.rsplit("/", 1)[1]
             if pid in self.server.pastes:
@@ -61,6 +63,15 @@ class ToyApp(BaseHTTPRequestHandler):
         self.server.pastes[pid] = data["content"]
         self._send(201, {"id": pid})
 
+
+    def do_DELETE(self):
+        pid = self.path.rsplit("/", 1)[1]
+        if pid in self.server.pastes:
+            del self.server.pastes[pid]
+            self.send_response(204)
+            self.end_headers()
+        else:
+            self._send(404, {"error": "not found"})
 
 def load_scenarios():
     d = os.path.join(os.path.dirname(__file__), "..", "scenarios")

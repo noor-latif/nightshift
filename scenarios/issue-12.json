@@ -1,0 +1,35 @@
+[
+ {
+  "name": "issue-12-delete-paste",
+  "description": "DELETE /paste/<id> returns 204 and the paste becomes unreadable",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "delete me"
+    },
+    "expect_body_fragment": "id",
+    "save": "pid"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/paste/{{pid}}",
+    "expected_status": 200,
+    "expect_body_fragment": "delete me"
+   },
+   {
+    "method": "DELETE",
+    "url": "http://127.0.0.1:{{port}}/paste/{{pid}}",
+    "expected_status": 204
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/paste/{{pid}}",
+    "expected_status": 404,
+    "expect_body_fragment": "not found"
+   }
+  ]
+ }
+]

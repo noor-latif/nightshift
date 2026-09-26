@@ -166,6 +166,53 @@ def applied_files(worktree):
     return {line[3:] for line in r.stdout.splitlines() if line.strip()}
 
 
+def diff_line_counts(diff_text):
+    """Our raw count of +/- body lines per file: excludes ---/+++ headers and
+    @@ lines, but counts empty +/- lines (numstat counts them too). Includes
+    lines from hunks git's apply.c parse later drops — that asymmetry is the
+    point: it detects a malformed second hunk inside a modified file.
+    """
+    counts, cur = {}, None
+    for line in diff_text.split("\n"):
+        if line.startswith("diff --git"):
+            m = re.match(r'^diff --git a/(.+?) b/(.+?)$', line)
+            if m:
+                cur = m.group(2)
+            else:
+                cur = None
+        elif line.startswith("--- "):
+            continue
+        elif line.startswith("+++ "):
+            p = line[4:].split("\t")[0]
+            if p != "/dev/null":
+                cur = p[2:] if p.startswith(("a/", "b/")) else p
+        elif line.startswith("@@"):
+            continue
+        elif cur and line[:1] in ("+", "-"):
+            counts[cur] = counts.get(cur, 0) + 1
+    return counts
+
+
+def numstat_counts(diff_text, extra):
+    """git's own parse of the same patch: added/deleted per file."""
+    fd, path = tempfile.mkstemp(suffix=".patch")
+    with os.fdopen(fd, "w") as f:
+        f.write(diff_text)
+    try:
+        r = subprocess.run(["git", "apply", "--numstat"] + extra + [path],
+                           capture_output=True, text=True)
+    finally:
+        os.unlink(path)
+    if r.returncode != 0:
+        return None
+    counts = {}
+    for line in r.stdout.splitlines():
+        add, dele, name = line.split("\t", 2)
+        # git numstat prints "-" for binary; treat as mismatch trigger (no parse)
+        counts[name] = (int(add) if add.isdigit() else 0) + (int(dele) if dele.isdigit() else 0)
+    return counts
+
+
 def apply_diff(diff_text, worktree):
     """Strict-first ladder: plain, then --recount, then --recount -C1.
 
@@ -173,9 +220,11 @@ def apply_diff(diff_text, worktree):
     (recount-only = sloppy hunk headers) and must not be hidden.
 
     Post-condition: a 0 exit is not enough. git apply silently DROPS
-    header-less new-file sections while succeeding, so the declared file
-    set must equal the actually-applied file set — otherwise a partial
-    patch sails through as a false green or a wrong-gate review reject.
+    sections it cannot parse while succeeding. File-level drops are caught
+    by declared==applied file-set equality; hunk-level drops WITHIN one
+    modified file are caught by line-count reconciliation — our raw +/- body
+    count per file vs git apply --numstat on the same patch (numstat is fine
+    HERE: the comparison target is git's own parse, not ground truth).
     """
     fd, path = tempfile.mkstemp(suffix=".patch")
     with os.fdopen(fd, "w") as f:
@@ -189,6 +238,7 @@ def apply_diff(diff_text, worktree):
                                cwd=worktree, capture_output=True, text=True)
             if r.returncode == 0:
                 declared, actual = declared_files(diff_text), applied_files(worktree)
+                ours, gits = diff_line_counts(diff_text), numstat_counts(diff_text, extra)
                 if declared != actual:
                     # ponytail: loud failure, no auto-repair — the model emitting
                     # a malformed (header-less) diff section is a genuine model
@@ -196,6 +246,9 @@ def apply_diff(diff_text, worktree):
                     # path: only if malformed-diff noise ever dominates real work.
                     return False, ("apply_incomplete: declared %s != applied %s"
                                    % (sorted(declared), sorted(actual))), tier
+                if gits is None or ours != gits:
+                    return False, ("apply_incomplete: line-count mismatch ours %s vs git %s"
+                                   % (ours, gits)), tier
                 return True, "applied", tier
         return False, (r.stderr or "apply failed").strip(), tier
     finally:
@@ -308,8 +361,10 @@ def run(issue):
         ok, detail, tier = apply_diff(diff_text, worktree)
         lap.event("diff-apply", ok=ok, tier=tier, detail=detail[:500])
         if not ok:
-            return finish(lap, "apply_incomplete" if detail.startswith("apply_incomplete")
-                          else "failure", gate="diff-apply", error=detail,
+            if detail.startswith("apply_incomplete"):
+                return finish(lap, "apply_incomplete", gate="diff-apply", error=detail,
+                              caught=detail)
+            return finish(lap, "failure", gate="diff-apply", error=detail,
                           caught="diff did not apply to a clean checkout")
         lap.check_clock()
 

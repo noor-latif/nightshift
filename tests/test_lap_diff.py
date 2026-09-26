@@ -99,6 +99,43 @@ class TestApplyDiff(unittest.TestCase):
         self.assertIn("paste_empty_content_test.py", detail)
         self.assertEqual(open(os.path.join(self.dir, "app.py")).read(), "x = 2\n")
 
+    def test_malformed_second_hunk_in_one_file_fails_loudly(self):
+        # Hunk-level drop WITHIN one modified file: the @@ header counts only
+        # hunk 1's lines, but the body carries a second change with no @@ of
+        # its own. git apply consumes hunk 1, silently drops the rest, exits
+        # 0 — file-set equality (declared==applied) is blind to this. The
+        # line-count reconciliation must catch it: our raw +/- body count
+        # (4) vs git's numstat parse of the same patch (2).
+        with open(os.path.join(self.dir, "app.py"), "w") as f:
+            f.write("x = 1\ny = 1\nz = 1\n")
+        git(self.dir, "add", "-A")
+        git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t",
+            "commit", "-qm", "second")
+        patch = ("diff --git a/app.py b/app.py\n"
+                 "--- a/app.py\n+++ b/app.py\n"
+                 "@@ -1,2 +1,2 @@\n-x = 1\n+x = 2\n y = 1\n"
+                 "-y = 1\n+y = 9\n z = 1\n")
+        ok, detail, tier = lap.apply_diff(patch, self.dir)
+        self.assertFalse(ok)
+        self.assertIn("apply_incomplete", detail)
+        self.assertIn("line-count mismatch", detail)
+        # the partial apply must not survive: worktree back to a clean state
+        # is the caller's job, but nothing half-patched may pass the gate
+        self.assertNotEqual(open(os.path.join(self.dir, "app.py")).read().splitlines(),
+                            ["x = 2", "y = 9", "z = 1"])
+
+    def test_diff_line_counts_vs_numstat_agree_on_clean_patch(self):
+        patch = ("diff --git a/app.py b/app.py\n"
+                 "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-x = 1\n+x = 2\n")
+        self.assertEqual(lap.diff_line_counts(patch), lap.numstat_counts(patch, []))
+
+    def test_diff_line_counts_include_empty_plus_minus_lines(self):
+        # numstat counts empty +/- lines; our raw count must too
+        patch = ("diff --git a/app.py b/app.py\n"
+                 "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-x = 1\n+\n")
+        self.assertEqual(lap.diff_line_counts(patch), {"app.py": 2})
+        self.assertEqual(lap.numstat_counts(patch, []), {"app.py": 2})
+
 class TestCheckoutFiles(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()

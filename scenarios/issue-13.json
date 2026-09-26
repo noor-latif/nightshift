@@ -1,0 +1,43 @@
+[
+ {
+  "name": "issue-13-stats-count",
+  "description": "GET /stats reports the number of pastes created on this server",
+  "assertions": [
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/stats",
+    "expected_status": 200,
+    "expect_body_fragment": "pastes"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "one"
+    },
+    "expect_body_fragment": "id"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "two"
+    },
+    "expect_body_fragment": "id"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/stats",
+    "expected_status": 200,
+    "expect_body_fragment": "pastes"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/health",
+    "expected_status": 200
+   }
+  ]
+ }
+]
