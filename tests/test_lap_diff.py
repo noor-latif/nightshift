@@ -86,6 +86,19 @@ class TestApplyDiff(unittest.TestCase):
         self.assertEqual(tier, "recount-C1")
         self.assertTrue(detail)
 
+    def test_headerless_new_file_section_fails_loudly(self):
+        # git apply exits 0 but silently drops the header-less section; the
+        # gate must fail loudly instead of applying app.py only.
+        patch = ("diff --git a/app.py b/app.py\n"
+                 "--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-x = 1\n+x = 2\n"
+                 "--- /dev/null\n+++ b/paste_empty_content_test.py\n"
+                 "def test_x():\n    assert True\n")
+        ok, detail, tier = lap.apply_diff(patch, self.dir)
+        self.assertFalse(ok)
+        self.assertIn("apply_incomplete", detail)
+        self.assertIn("paste_empty_content_test.py", detail)
+        self.assertEqual(open(os.path.join(self.dir, "app.py")).read(), "x = 2\n")
+
 class TestCheckoutFiles(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()

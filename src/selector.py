@@ -11,7 +11,8 @@ import time
 
 from settings import CLAIMS_DIR, LAP_WALLCLOCK_LIMIT_S, RETRY_BUDGET
 
-OUTCOMES = ("success", "failure", "timeout", "crash", "queue-empty")
+OUTCOMES = ("success", "failure", "timeout", "crash", "queue-empty",
+            "apply_incomplete")
 
 
 def _gh(args, repo, gh="gh"):
@@ -117,6 +118,15 @@ def handle_outcome(outcome, issue, state, now):
     if outcome == "timeout":
         rec["disposition"] = "timeout-park"  # never re-dispatch a timed-out lap
         return "timeout-park"
+    if outcome == "apply_incomplete":
+        # malformed-diff model failure (git apply silently dropped sections):
+        # a genuine implementer failure — retry like any other failure.
+        rec["retries"] += 1
+        if rec["retries"] > RETRY_BUDGET:
+            rec["disposition"] = "parked"
+            return "parked"
+        rec["disposition"] = "retry"
+        return "retry"
     # failure / crash: retry until budget, then park (Sortie semantics)
     rec["retries"] += 1
     if rec["retries"] > RETRY_BUDGET:

@@ -142,11 +142,40 @@ def extract_diff(text):
     return m.group(0).strip() + "\n" if m else None
 
 
+def declared_files(diff_text):
+    """File paths the diff's ---/+++ header pairs declare (skip /dev/null sides)."""
+    declared = set()
+    old = None
+    for line in diff_text.split("\n"):
+        m = re.match(r"^(?:diff --git|\*{5})|^--- (\S+)|^\+\+\+ (\S+)", line)
+        if line.startswith("--- "):
+            old = line[4:].split("\t")[0]
+        elif line.startswith("+++ ") and old is not None:
+            new = line[4:].split("\t")[0]
+            for p in (old, new):
+                if p != "/dev/null":
+                    declared.add(p[2:] if p.startswith(("a/", "b/")) else p)
+            old = None
+    return declared
+
+
+def applied_files(worktree):
+    """Files actually changed by git apply: modified/tracked + untracked (new)."""
+    r = subprocess.run(["git", "status", "--porcelain"], cwd=worktree,
+                       capture_output=True, text=True)
+    return {line[3:] for line in r.stdout.splitlines() if line.strip()}
+
+
 def apply_diff(diff_text, worktree):
     """Strict-first ladder: plain, then --recount, then --recount -C1.
 
     The tier that applied is a measurable implementer-quality signal
     (recount-only = sloppy hunk headers) and must not be hidden.
+
+    Post-condition: a 0 exit is not enough. git apply silently DROPS
+    header-less new-file sections while succeeding, so the declared file
+    set must equal the actually-applied file set — otherwise a partial
+    patch sails through as a false green or a wrong-gate review reject.
     """
     fd, path = tempfile.mkstemp(suffix=".patch")
     with os.fdopen(fd, "w") as f:
@@ -159,6 +188,14 @@ def apply_diff(diff_text, worktree):
             r = subprocess.run(["git", "apply", "--whitespace=nowarn"] + extra + [path],
                                cwd=worktree, capture_output=True, text=True)
             if r.returncode == 0:
+                declared, actual = declared_files(diff_text), applied_files(worktree)
+                if declared != actual:
+                    # ponytail: loud failure, no auto-repair — the model emitting
+                    # a malformed (header-less) diff section is a genuine model
+                    # failure; the gate's job is to catch it, not fix it. Upgrade
+                    # path: only if malformed-diff noise ever dominates real work.
+                    return False, ("apply_incomplete: declared %s != applied %s"
+                                   % (sorted(declared), sorted(actual))), tier
                 return True, "applied", tier
         return False, (r.stderr or "apply failed").strip(), tier
     finally:
@@ -267,7 +304,8 @@ def run(issue):
         ok, detail, tier = apply_diff(diff_text, worktree)
         lap.event("diff-apply", ok=ok, tier=tier, detail=detail[:500])
         if not ok:
-            return finish(lap, "failure", gate="diff-apply", error=detail,
+            return finish(lap, "apply_incomplete" if detail.startswith("apply_incomplete")
+                          else "failure", gate="diff-apply", error=detail,
                           caught="diff did not apply to a clean checkout")
         lap.check_clock()
 
