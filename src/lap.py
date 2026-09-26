@@ -34,7 +34,9 @@ from settings import (
     EVIDENCE_DIR,
     GITHUB_REPO,
     HEARTBEAT_PATH,
+    IMPLEMENTER_MAX_TOKENS,
     IMPLEMENTER_MODEL,
+    IMPLEMENTER_REASONING_EFFORT,
     LAP_WALLCLOCK_LIMIT_S,
     MIN_MAX_TOKENS,
     PRODUCT_REPO,
@@ -44,7 +46,6 @@ from settings import (
 RESULT_PATH = os.path.join("state", "lap-result.json")
 LIVE_PORT = 8642  # the rig's live port; PID file below (task contract overrides default)
 LIVE_PID_FILE = "/tmp/toy-deploy.pid"
-IMPLEMENTER_MAX_TOKENS = max(8192, MIN_MAX_TOKENS)
 REVIEWER_MAX_TOKENS = max(4096, MIN_MAX_TOKENS)
 
 
@@ -147,7 +148,6 @@ def declared_files(diff_text):
     declared = set()
     old = None
     for line in diff_text.split("\n"):
-        m = re.match(r"^(?:diff --git|\*{5})|^--- (\S+)|^\+\+\+ (\S+)", line)
         if line.startswith("--- "):
             old = line[4:].split("\t")[0]
         elif line.startswith("+++ ") and old is not None:
@@ -232,7 +232,10 @@ class Lap:
             self.costs.append({"role": role, "usage": usage})
             self._dump("cost.json", {
                 "calls": self.costs,
-                "total_usd": sum(c["usage"].get("cost") or 0 for c in self.costs),
+                # buyer_cost_micro is the truthful field (exact vs order book);
+                # usage.cost reads ~15% low (luna-qualify probe 3)
+                "total_usd": sum((c["usage"].get("buyer_cost_micro") or 0) / 1e6
+                                 for c in self.costs),
             })
 
     def heartbeat_loop(self):
@@ -288,7 +291,8 @@ def run(issue):
         prompt = (agent.implementer_prompt(data, criteria, issue)
                   + "\n\nCurrent checkout files:\n" + "\n".join(files))
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
-                       max_tokens=IMPLEMENTER_MAX_TOKENS)
+                       max_tokens=IMPLEMENTER_MAX_TOKENS,
+                       reasoning_effort=IMPLEMENTER_REASONING_EFFORT)
         lap.add_cost(r["usage"], "implementer")
         with open(os.path.join(lap.evdir, "implementer_raw.txt"), "w") as f:
             f.write(r["content"])

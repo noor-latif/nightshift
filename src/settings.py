@@ -7,13 +7,16 @@ SURPLUS_BASE_URL = "https://api.surplusintelligence.ai"
 SURPLUS_CHAT_PATH = "/v1/chat/completions"
 SURPLUS_API_KEY_ENV = "SURPLUS_INTELLIGENCE_API_KEY"  # key never hardcoded, never printed
 MIN_MAX_TOKENS = 512  # reasoning models eat budget; below this content can come back null
-IMPLEMENTER_MODEL = "glm-5.3-flash"  # exact live id; no effort suffixes on this gateway
+IMPLEMENTER_MODEL = "gpt-6-luna"
+IMPLEMENTER_MAX_TOKENS = 16384  # luna: 10,118 completion tokens observed on a real prompt
+IMPLEMENTER_REASONING_EFFORT = "high"  # effort=max returns empty content; high is mandatory (luna-qualify)
 REVIEWER_MODEL = "glm-5.3-flash"
 RETRY_BUDGET = 2
 MAX_CONCURRENT_LAPS = 1
 NTFY_TOPIC = "nightshift-388c2cd67dbf9d80"
 NTFY_URL = "https://ntfy.sh/" + NTFY_TOPIC
 LAP_WALLCLOCK_LIMIT_S = 10800
+SESSION_WALLCLOCK_LIMIT_S = 14400  # session backstop ≥ per-lap: luna lap ≈ 3×16min + review/verify
 COST_CEILING_USD = 0.01
 HEARTBEAT_PATH = "state/heartbeat"  # relative to the supervisor cwd
 HEARTBEAT_TTL_S = 120  # ponytail: fixed TTL; tune on nixlab once real lap cadence is known

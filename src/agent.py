@@ -112,7 +112,8 @@ def reviewer_prompt(diff, criteria, _cache={}):
     return body
 
 
-def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, api_key=None, opener=None,
+def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
+         api_key=None, opener=None,
          base_url=SURPLUS_BASE_URL):
     """One chat completion, streaming, with exactly one transient retry."""
     api_key = api_key or os.environ[SURPLUS_API_KEY_ENV]
@@ -128,6 +129,7 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, api_key=None, opener=Non
             "max_tokens": attempt_max,
             "stream": True,
             **({"provider": PROVIDER_PINS[model]} if model in PROVIDER_PINS else {}),
+            **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
         }).encode()
         req = urllib.request.Request(
             chat_url(base_url), payload,

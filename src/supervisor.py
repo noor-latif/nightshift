@@ -19,6 +19,7 @@ from settings import (
     HEARTBEAT_TTL_S,
     LAP_WALLCLOCK_LIMIT_S,
     NTFY_URL,
+    SESSION_WALLCLOCK_LIMIT_S,
     STATE_DIR,
 )
 
@@ -249,8 +250,8 @@ def main():
             blocked = next(e[8:] for e in events if e.startswith("BLOCKED"))
             notify("queue blocked: issue %s open PR or live claim" % blocked)
             sys.exit(1)
-        if now - session_started > LAP_WALLCLOCK_LIMIT_S:
-            notify("supervisor HALT: session wallclock %ds exceeded" % LAP_WALLCLOCK_LIMIT_S)
+        if now - session_started > SESSION_WALLCLOCK_LIMIT_S:
+            notify("supervisor HALT: session wallclock %ds exceeded" % SESSION_WALLCLOCK_LIMIT_S)
             break
         time.sleep(5)
 
