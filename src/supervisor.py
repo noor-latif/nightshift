@@ -203,10 +203,15 @@ def main():
             return "crash"
         return r["outcome"]
 
+    box = {}
     deps = {
         "state_path": state_path,
         "notify": notify,
-        "claim": lambda now: claim_next(GITHUB_REPO, issues_dir=os.path.join(STATE_DIR, "claims")),
+        "claim": lambda now: claim_next(
+            GITHUB_REPO,
+            issues_dir=os.path.join(STATE_DIR, "claims"),
+            dispositions=(box.get("state") or {}).get("issues", {}),
+        ),
         "start_lap": start_lap,
         "kill_lap": kill_lap,
         "lap_outcome": lap_outcome,
@@ -214,6 +219,7 @@ def main():
     }
     while True:
         state = load_state(state_path)
+        box["state"] = state
         events = tick(state, time.time(), deps)
         if "HALT" in events:
             notify("supervisor HALT: " + ",".join(events))

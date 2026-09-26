@@ -132,5 +132,29 @@ class TestSelector(unittest.TestCase):
             selector.handle_outcome("hijacked", 7, {}, NOW)
 
 
+    def test_parked_issue_not_reclaimed_next_open_claimed(self):
+        # park is durable: stale claim on a parked issue must NOT be broken/re-claimed
+        fake = FakeGh(ISSUES, [])
+        path = os.path.join(self.issues_dir, "issue-1.json")
+        with open(path, "w") as f:
+            json.dump({"issue": 1, "claimed_at": NOW - LAP_WALLCLOCK_LIMIT_S - 10}, f)
+        dispositions = {"1": "parked"}
+        got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,
+                                  dispositions=dispositions)
+        self.assertEqual(got["issue"], 2)
+        self.assertFalse(os.path.exists(os.path.join(self.issues_dir, "broken.log")))
+
+    def test_issue_without_disposition_claimed_normally(self):
+        fake = FakeGh(ISSUES, [])
+        got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,
+                                  dispositions={"9": "parked"})  # unrelated entry
+        self.assertEqual(got["issue"], 1)
+
+    def test_missing_state_unaffected(self):
+        fake = FakeGh(ISSUES, [])
+        got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,
+                                  dispositions=None)
+        self.assertEqual(got["issue"], 1)
+
 if __name__ == "__main__":
     unittest.main()

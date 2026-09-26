@@ -37,12 +37,19 @@ def claim_path(issues_dir, issue):
     return os.path.join(issues_dir, "issue-%d.json" % issue)
 
 
-def claim_next(repo, issues_dir=CLAIMS_DIR, now=None, gh="gh"):
-    """Claim the oldest open issue with no open PR. Returns the claim dict or None."""
+def claim_next(repo, issues_dir=CLAIMS_DIR, now=None, gh="gh", dispositions=None):
+    """Claim the oldest open issue with no open PR. Returns the claim dict or None.
+
+    dispositions: durable per-issue map (state["issues"]) — parked issues are
+    never re-claimed, so a park survives a supervisor restart.
+    """
+    dispositions = dispositions or {}
     now = time.time() if now is None else now
     os.makedirs(issues_dir, exist_ok=True)
     pr_branches = open_pr_branches(repo, gh)
     for issue in list_open_issues(repo, gh):
+        if dispositions.get(str(issue["number"])) == "parked":
+            continue  # park is durable; dispatch must not burn retries again
         if "agent/issue-%d" % issue["number"] in pr_branches:
             continue
         path = claim_path(issues_dir, issue["number"])
