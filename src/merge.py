@@ -56,9 +56,7 @@ def merge_pr(issue, repo, head_sha_value, pr_url=None, gh="gh", cwd=None):
     else:
         args.append("agent/issue-%d" % issue)
     _gh(args, repo, gh, cwd)
-    # post-merge: fetch main and find the squash commit
-    _gh(["api", "repos/%s/commits/main" % repo, "-q", ".sha"], repo, gh, cwd)
-    return None  # actual SHA resolved by caller via git fetch; gh output only
+    return None  # actual SHA resolved by caller via git fetch; gh api has no -R flag
 
 
 def post_merge_identity(repo_cwd, merge_commit, head, git="git"):

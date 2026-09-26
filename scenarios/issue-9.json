@@ -1,0 +1,38 @@
+[
+ {
+  "name": "issue-9-empty-content",
+  "description": "empty-string content must 400 with error, no id minted",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "body": {
+     "content": ""
+    },
+    "expect_body_fragment": "error"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "still fine"
+    },
+    "expect_body_fragment": "id"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "body": {},
+    "expect_body_fragment": "error"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/health",
+    "expected_status": 200
+   }
+  ]
+ }
+]

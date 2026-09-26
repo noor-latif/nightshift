@@ -1,0 +1,32 @@
+[
+ {
+  "name": "issue-10-content-length-required",
+  "description": "POST with empty/absent Content-Length must 411, not fake 400",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 411,
+    "raw_body": "{\"content\":\"no length\"}",
+    "headers": {
+     "Content-Length": ""
+    },
+    "expect_body_fragment": "Content-Length required"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "with length"
+    },
+    "expect_body_fragment": "id"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/health",
+    "expected_status": 200
+   }
+  ]
+ }
+]

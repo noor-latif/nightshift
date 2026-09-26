@@ -1,0 +1,35 @@
+[
+ {
+  "name": "issue-8-query-string",
+  "description": "GET /paste/<id>?v=1 must serve the paste; /health?x=1 must serve health",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "body": {
+     "content": "query string probe"
+    },
+    "expected_status": 201,
+    "save": "pid"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/paste/{{pid}}?v=1",
+    "expected_status": 200,
+    "expect_body_fragment": "query string probe"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/health?x=1",
+    "expected_status": 200,
+    "expect_body_fragment": "\"status\": \"ok\""
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/paste/nope-123?v=1",
+    "expected_status": 404,
+    "expect_body_fragment": "not found"
+   }
+  ]
+ }
+]
