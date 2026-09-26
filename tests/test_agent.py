@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -68,6 +69,36 @@ class TestChat(unittest.TestCase):
         chat([{"role": "user", "content": "hi"}], "m", api_key="sekrit", opener=op)
         self.assertNotIn("sekrit", op.calls[0].full_url)
         self.assertEqual(op.calls[0].get_header("Authorization"), "Bearer sekrit")
+
+    def test_pinned_model_adds_provider_allow_list(self):
+        import agent
+
+        agent.PROVIDER_PINS["m"] = "family-id"
+        try:
+            op = FakeOpener([FakeResp(load("sse_stream.txt"))])
+            chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        finally:
+            del agent.PROVIDER_PINS["m"]
+        sent = json.loads(op.calls[0].data)
+        self.assertEqual(sent["provider"], "family-id")
+
+    def test_pinned_model_list_pin_passes_through(self):
+        import agent
+
+        agent.PROVIDER_PINS["m"] = ["family-id", "openrouter"]
+        try:
+            op = FakeOpener([FakeResp(load("sse_stream.txt"))])
+            chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        finally:
+            del agent.PROVIDER_PINS["m"]
+        sent = json.loads(op.calls[0].data)
+        self.assertEqual(sent["provider"], ["family-id", "openrouter"])
+
+    def test_unpinned_model_has_no_provider_key(self):
+        op = FakeOpener([FakeResp(load("sse_stream.txt"))])
+        chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        sent = json.loads(op.calls[0].data)
+        self.assertNotIn("provider", sent)
 
     def test_permanent_no_sellers_not_retried(self):
         body = b'{"error":{"type":"invalid_request_error","code":"no_sellers_for_model","message":"nope"}}'

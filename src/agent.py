@@ -17,6 +17,7 @@ import urllib.request
 
 from settings import (
     MIN_MAX_TOKENS,
+    PROVIDER_PINS,
     SURPLUS_API_KEY_ENV,
     SURPLUS_BASE_URL,
     SURPLUS_CHAT_PATH,
@@ -125,6 +126,7 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, api_key=None, opener=Non
             "messages": messages,
             "max_tokens": attempt_max,
             "stream": True,
+            **({"provider": PROVIDER_PINS[model]} if model in PROVIDER_PINS else {}),
         }).encode()
         req = urllib.request.Request(
             chat_url(base_url), payload,
