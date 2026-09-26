@@ -92,7 +92,9 @@ def dispatch(state, now, deps):
         "started_at": now,
         "pid": None,
     }
-    state.setdefault("started_at", now)
+    # wallclock guard measures the current lap session, not all history:
+    # refresh so a supervisor restarted hours later dispatches instead of HALT
+    state["started_at"] = now
     deps["start_lap"](claim["issue"], state["lap"])
     save_state(state, deps["state_path"])
     return "dispatched"
@@ -149,9 +151,6 @@ def tick(state, now, deps):
             if halt:
                 events.append("HALT")
                 return events
-    elif state.get("started_at") and (now - state["started_at"]) > LAP_WALLCLOCK_LIMIT_S:
-        events.append("HALT")
-        return events
     else:
         d = dispatch(state, now, deps)
         if d not in ("already-running",):

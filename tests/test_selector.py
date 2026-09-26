@@ -144,6 +144,18 @@ class TestSelector(unittest.TestCase):
         self.assertEqual(got["issue"], 2)
         self.assertFalse(os.path.exists(os.path.join(self.issues_dir, "broken.log")))
 
+    def test_timeout_parked_issue_not_reclaimed_next_open_claimed(self):
+        # timeout-park is terminal like parked: stale claim must NOT be broken/re-claimed
+        fake = FakeGh(ISSUES, [])
+        path = os.path.join(self.issues_dir, "issue-1.json")
+        with open(path, "w") as f:
+            json.dump({"issue": 1, "claimed_at": NOW - LAP_WALLCLOCK_LIMIT_S - 10}, f)
+        dispositions = {"1": "timeout-park"}
+        got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,
+                                  dispositions=dispositions)
+        self.assertEqual(got["issue"], 2)
+        self.assertFalse(os.path.exists(os.path.join(self.issues_dir, "broken.log")))
+
     def test_issue_without_disposition_claimed_normally(self):
         fake = FakeGh(ISSUES, [])
         got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,

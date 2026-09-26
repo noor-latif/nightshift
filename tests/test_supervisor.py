@@ -77,6 +77,17 @@ class TestSupervisorStateMachine(unittest.TestCase):
         self.assertEqual(disposition, "timeout-park")
         self.assertTrue(halt)
 
+    def test_restarted_supervisor_with_stale_started_at_dispatches(self):
+        # started_at is a lap-session clock: a supervisor restarted after a
+        # long gap must dispatch again, not HALT on history it never lived
+        deps = fake_deps(self.tmp, self.notify, claim_result={"issue": 5, "path": "x"})
+        state = supervisor.load_state(deps["state_path"])
+        state["started_at"] = self.now - supervisor.LAP_WALLCLOCK_LIMIT_S - 3600
+        events = supervisor.tick(state, self.now, deps)
+        self.assertNotIn("HALT", events)
+        self.assertIn("dispatch:dispatched", events)
+        self.assertEqual(state["started_at"], self.now)
+
     def test_tick_dead_lap_notified_as_crash(self):
         kills = []
         deps = fake_deps(self.tmp, self.notify, kill_calls=kills)
