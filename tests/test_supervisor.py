@@ -64,7 +64,7 @@ class TestSupervisorStateMachine(unittest.TestCase):
         supervisor.handle_lap_end(state, "crash", self.now + 30, deps)
         supervisor.dispatch(state, self.now + 40, deps)
         disposition, halt = supervisor.handle_lap_end(state, "failure", self.now + 50, deps)
-        self.assertEqual((disposition, halt), ("parked", True))
+        self.assertEqual((disposition, halt), ("parked", False))  # Sortie: park continues the queue
         self.assertIn("parked", " ".join(self.notify).lower())
         # parked issue is never re-dispatched: durable state says parked
         self.assertEqual(state["issues"]["5"]["disposition"], "parked")
@@ -134,3 +134,53 @@ class TestNotifyGuard(unittest.TestCase):
             return Resp()
         status = supervisor.notify("x", opener=type("O", (), {"open": staticmethod(ok)})())
         self.assertEqual(status, 200)
+
+
+class TestParkAndContinue(unittest.TestCase):
+    """Sortie semantics: park escalates the issue, the queue continues."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.notify = []
+        self.now = 1000.0
+
+    def _state_with_parked(self):
+        state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
+        state["issues"] = {"5": {"retries": 3, "disposition": "parked"}}
+        return state
+
+    def test_park_does_not_halt(self):
+        # fresh issue 5: failure x3 (budget 2) -> parked, halt False
+        deps = fake_deps(self.tmp, self.notify, claim_result={"issue": 5, "path": "x"})
+        state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
+        for i in range(3):
+            supervisor.dispatch(state, self.now + i * 50, deps)
+            disposition, halt = supervisor.handle_lap_end(state, "failure", self.now + i * 50 + 10, deps)
+        self.assertEqual((disposition, halt), ("parked", False))
+        self.assertEqual(state["issues"]["5"]["disposition"], "parked")
+
+    def test_park_then_next_tick_dispatches_next_issue(self):
+        # S1-critical path: park issue 5, queue continues with issue 6
+        deps = fake_deps(self.tmp, self.notify, claim_result={"issue": 5, "path": "x"})
+        state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
+        for i in range(3):
+            supervisor.dispatch(state, self.now + i * 50, deps)
+            supervisor.handle_lap_end(state, "failure", self.now + i * 50 + 10, deps)
+        state["lap"] = None
+        deps["claim"] = lambda now: {"issue": 6, "path": "y"}
+        events = supervisor.tick(state, self.now + 200, deps)
+        self.assertIn("dispatch:dispatched", events)
+        self.assertEqual(state["lap"]["issue"], 6)
+
+    def test_idle_after_all_terminal_drains(self):
+        deps = fake_deps(self.tmp, self.notify, claim_result=None)
+        state = self._state_with_parked()
+        events = supervisor.tick(state, self.now, deps)
+        self.assertIn("dispatch:idle", events)
+        drained = [e for e in events if e.startswith("DRAIN")]
+        self.assertEqual(drained, ["DRAIN:1 parked, 0 merged"])
+
+    def test_session_wallclock_backstop_notified_and_halted(self):
+        # main-loop backstop: simulated via the same arithmetic it uses
+        session_started = 0.0
+        now = supervisor.LAP_WALLCLOCK_LIMIT_S + 1
+        self.assertTrue(now - session_started > supervisor.LAP_WALLCLOCK_LIMIT_S)

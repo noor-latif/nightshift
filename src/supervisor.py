@@ -127,8 +127,10 @@ def handle_lap_end(state, outcome, now, deps):
         notify_fn("lap issue %d: %s (%s)" % (issue, outcome.upper(), disposition))
     state["lap"] = None
     save_state(state, deps["state_path"])
-    # STOP contract: halt on budget exhaustion (park) or wall-clock exceed
-    halt = disposition in ("parked", "timeout-park") or (now - (state.get("started_at") or now)) > LAP_WALLCLOCK_LIMIT_S
+    # Sortie semantics: park escalates the issue and releases the queue to
+    # continue; halt is reserved for wall-clock exceed (per-lap backstop here,
+    # session backstop in main()).
+    halt = (now - (state.get("started_at") or now)) > LAP_WALLCLOCK_LIMIT_S
     return disposition, halt
 
 
@@ -160,6 +162,11 @@ def tick(state, now, deps):
         d = dispatch(state, now, deps)
         if d not in ("already-running",):
             events.append("dispatch:" + d)
+            if d == "idle":
+                issues = state.get("issues", {})
+                parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
+                merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
+                events.append("DRAIN:%d parked, %d merged" % (parked, merged))
 
     # reconcile: reap claims for issues with no live lap (supervisor restart)
     for path, claim in deps.get("reconcile", lambda now: [])(now):
@@ -221,12 +228,20 @@ def main():
         "lap_outcome": lap_outcome,
         "reconcile": lambda now: [],
     }
+    session_started = time.time()
     while True:
         state = load_state(state_path)
         box["state"] = state
-        events = tick(state, time.time(), deps)
+        now = time.time()
+        events = tick(state, now, deps)
         if "HALT" in events:
             notify("supervisor HALT: " + ",".join(events))
+            break
+        if any(e.startswith("DRAIN") for e in events):
+            notify("queue drained: " + next(e[6:] for e in events if e.startswith("DRAIN")))
+            break
+        if now - session_started > LAP_WALLCLOCK_LIMIT_S:
+            notify("supervisor HALT: session wallclock %ds exceeded" % LAP_WALLCLOCK_LIMIT_S)
             break
         time.sleep(5)
 
