@@ -12,6 +12,7 @@ stream ended without finish_reason / reasoning ate the token budget).
 
 import json
 import os
+import http.client
 import urllib.error
 import urllib.request
 
@@ -143,7 +144,8 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, api_key=None, opener=Non
             if attempt == 2:
                 raise TransientError("HTTP %d after retry" % e.code)
             continue
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
+        except (urllib.error.URLError, TimeoutError, OSError,
+                http.client.IncompleteRead) as e:
             if attempt == 2:
                 raise TransientError("connection error after retry: %s" % e)
             continue

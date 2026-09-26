@@ -1,4 +1,5 @@
 import json
+import http.client
 import os
 import sys
 import unittest
@@ -64,6 +65,30 @@ class TestParseStream(unittest.TestCase):
 
 
 class TestChat(unittest.TestCase):
+    def test_incomplete_read_retried_then_succeeds(self):
+        # cut stream mid-body: same transient class as "ended without
+        # finish_reason"; must not escape chat() as a lap crash
+        class CutResp:
+            def __init__(self):
+                self.calls = 0
+
+            def read(self):
+                self.calls += 1
+                raise http.client.IncompleteRead(b"partial", 700657)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        cut = CutResp()
+        op = FakeOpener([cut, FakeResp(load("sse_stream.txt"))])
+        got = chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        self.assertEqual(got["content"], "OK")
+        self.assertEqual(cut.calls, 1)
+        self.assertEqual(len(op.calls), 2)
+
     def test_key_in_header_not_in_url_or_error(self):
         op = FakeOpener([FakeResp(load("sse_stream.txt"))])
         chat([{"role": "user", "content": "hi"}], "m", api_key="sekrit", opener=op)
