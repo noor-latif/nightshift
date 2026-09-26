@@ -90,26 +90,34 @@ def criteria_from(body):
 
 
 def extract_diff(text):
-    """Pull the diff out of model prose: fenced block first, then a bare diff."""
-    for b in re.findall(r"```(?:diff)?\n(.*?)```", text, re.S):
-        if "diff --git" in b or "\n--- a/" in b or "\n+++ b/" in b:
-            return b.strip() + "\n"
+    """Pull the diff out of model prose: all fenced diff blocks, else a bare diff."""
+    blocks = [b.strip() for b in re.findall(r"```(?:diff)?\n(.*?)```", text, re.S)
+              if "--- a/" in b or "+++ b/" in b]
+    if blocks:
+        return "\n".join(b + "\n" for b in blocks)
     m = re.search(r"^diff --git.*", text, re.S | re.M)
     return m.group(0).strip() + "\n" if m else None
 
 
 def apply_diff(diff_text, worktree):
+    """Strict-first ladder: plain, then --recount, then --recount -C1.
+
+    The tier that applied is a measurable implementer-quality signal
+    (recount-only = sloppy hunk headers) and must not be hidden.
+    """
     fd, path = tempfile.mkstemp(suffix=".patch")
     with os.fdopen(fd, "w") as f:
         f.write(diff_text)
     try:
         r = None
-        for extra in ([], ["--3way"]):
+        tier = None
+        for tier, extra in (("plain", []), ("recount", ["--recount"]),
+                            ("recount-C1", ["--recount", "-C1"])):
             r = subprocess.run(["git", "apply", "--whitespace=nowarn"] + extra + [path],
                                cwd=worktree, capture_output=True, text=True)
             if r.returncode == 0:
-                return True, "applied"
-        return False, (r.stderr or "apply failed").strip()
+                return True, "applied", tier
+        return False, (r.stderr or "apply failed").strip(), tier
     finally:
         os.unlink(path)
 
@@ -218,8 +226,8 @@ def run(issue):
                           caught="model produced no diff despite claiming to implement")
         with open(os.path.join(lap.evdir, "claimed.diff"), "w") as f:
             f.write(diff_text)
-        ok, detail = apply_diff(diff_text, worktree)
-        lap.event("diff-apply", ok=ok, detail=detail[:500])
+        ok, detail, tier = apply_diff(diff_text, worktree)
+        lap.event("diff-apply", ok=ok, tier=tier, detail=detail[:500])
         if not ok:
             return finish(lap, "failure", gate="diff-apply", error=detail,
                           caught="diff did not apply to a clean checkout")

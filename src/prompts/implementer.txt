@@ -7,6 +7,12 @@ issue body:
 acceptance criteria:
 {{criteria}}
 
-Work in the current checkout. Create branch agent/issue-{{n}}. Write code +
-tests, run the test suite, then commit. Output the diff of your work at the
-end. Reason step by step before writing files.
+You cannot run commands or see a checkout beyond the files provided; another
+process applies your patch and runs the tests. Reason step by step first,
+then output ONLY a unified diff:
+
+- Standard numeric hunk headers `@@ -N,M +N,M @@` are required (they may be
+  approximate; never omit them).
+- One fenced block per file.
+- New files start with `--- /dev/null`.
+- No commit banners, no prose after the diff.
