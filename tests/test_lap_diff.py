@@ -86,5 +86,39 @@ class TestApplyDiff(unittest.TestCase):
         self.assertEqual(tier, "recount-C1")
         self.assertTrue(detail)
 
+class TestCheckoutFiles(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def write(self, name, content):
+        with open(os.path.join(self.dir, name), "w") as f:
+            f.write(content)
+
+    def test_nonstandard_names_included(self):
+        self.write("server.py", "s = 1\n")
+        self.write("server_test.py", "t = 1\n")
+        got = lap.checkout_files(self.dir)
+        self.assertEqual(len(got), 2)
+        self.assertIn("=== server.py ===", got[0])
+        self.assertIn("=== server_test.py ===", got[1])
+
+    def test_dotdirs_and_factory_excluded(self):
+        self.write("app.py", "x = 1\n")
+        os.makedirs(os.path.join(self.dir, ".factory"))
+        with open(os.path.join(self.dir, ".factory", "leak.py"), "w") as f:
+            f.write("secret\n")
+        got = lap.checkout_files(self.dir)
+        self.assertEqual([g for g in got if "app.py" in g], got)
+        self.assertNotIn("secret", "".join(got))
+
+    def test_char_cap_stops_at_whole_files_deterministically(self):
+        self.write("a.py", "x" * 600)
+        self.write("b.py", "y" * 600)
+        self.write("c.py", "z" * 600)
+        got = lap.checkout_files(self.dir, char_budget=1000)
+        self.assertEqual(len(got), 1)
+        self.assertIn("a.py", got[0])
+        self.assertNotIn("b.py", got[0])
+
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,7 @@ import deploy
 import merge
 import verify
 from settings import (
+    CHECKOUT_CHAR_BUDGET,
     EVIDENCE_DIR,
     GITHUB_REPO,
     HEARTBEAT_PATH,
@@ -82,6 +83,28 @@ def worktree_for(issue):
 
 def issue_data(issue):
     return json.loads(_gh(["issue", "view", str(issue), "--json", "title,body"]))
+
+
+def checkout_files(worktree, char_budget=CHECKOUT_CHAR_BUDGET):
+    """Bounded view of the worktree for the implementer: root *.py, sorted,
+    whole files, stopped at the char budget. Excludes dotdirs and .factory/.
+    A hardcoded file tuple went blind on any repo deployed with other names.
+    """
+    out, used = [], 0
+    for name in sorted(os.listdir(worktree)):
+        if not name.endswith(".py") or name.startswith("."):
+            continue
+        p = os.path.join(worktree, name)
+        if not os.path.isfile(p):
+            continue
+        with open(p) as f:
+            text = f.read()
+        block = "=== %s ===\n%s" % (name, text)
+        if used + len(block) > char_budget:
+            break  # sorted order → deterministic prefix; bigger repos truncate
+        out.append(block)
+        used += len(block)
+    return out
 
 
 def criteria_from(body):
@@ -204,12 +227,7 @@ def run(issue):
         criteria = criteria_from(data["body"])
         lap.event("claimed", title=data["title"])
 
-        files = []
-        for name in ("app.py", "app_test.py"):
-            p = os.path.join(worktree, name)
-            if os.path.exists(p):
-                with open(p) as f:
-                    files.append("=== %s ===\n%s" % (name, f.read()))
+        files = checkout_files(worktree)
         prompt = (agent.implementer_prompt(data, criteria, issue)
                   + "\n\nCurrent checkout files:\n" + "\n".join(files))
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
