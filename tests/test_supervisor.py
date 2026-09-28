@@ -215,3 +215,26 @@ supervisor.main()
 
         self.assertEqual(run_main(["dispatch:idle", "BLOCKED:9"]), 1)
         self.assertEqual(run_main(["dispatch:idle", "DRAIN:0 parked, 0 merged"]), 0)
+
+class TestInstanceLock(unittest.TestCase):
+    """Two supervisors must never run concurrently (L-009 restart races)."""
+
+    def test_second_acquire_raises_when_held(self):
+        import fcntl
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "supervisor.lock")
+        held = supervisor.acquire_instance_lock(path)
+        try:
+            with self.assertRaises(OSError):
+                supervisor.acquire_instance_lock(path)
+        finally:
+            fcntl.flock(held, fcntl.LOCK_UN)
+            os.close(held)
+        # released → acquires again
+        again = supervisor.acquire_instance_lock(path)
+        fcntl.flock(again, fcntl.LOCK_UN)
+        os.close(again)
+
+    def test_lock_file_created_in_state_dir(self):
+        self.assertTrue(supervisor.LOCK_PATH.endswith(
+            os.path.join("state", "supervisor.lock")))

@@ -24,6 +24,26 @@ from settings import (
 )
 
 RESULT_PATH = os.path.join(STATE_DIR, "lap-result.json")
+LOCK_PATH = os.path.join(STATE_DIR, "supervisor.lock")
+
+
+def acquire_instance_lock(path=LOCK_PATH):
+    """Single-instance guard: exclusive flock, held for the process lifetime
+    (fd stays open). Two supervisors must never race the same state dir
+    (L-009 restart races; BIGGEST_ISSUE_ANALYSIS §5). Returns the held fd or
+    raises BlockingIOError.
+    """
+    import fcntl
+
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
+
 
 
 def notify(text, title="nightshift", url=NTFY_URL, opener=None):
@@ -190,6 +210,11 @@ def main():
 
     state_path = os.path.join(STATE_DIR, "state.json")
     os.makedirs(STATE_DIR, exist_ok=True)
+    lock_fd = acquire_instance_lock()
+    try:
+        os.write(lock_fd, str(os.getpid()).encode())
+    except OSError:
+        pass  # lock content is diagnostic only; the flock is the guard
 
     def start_lap(issue, lap):
         logf = open(os.path.join(STATE_DIR, "lap-%d.log" % issue), "a")
