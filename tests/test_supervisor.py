@@ -33,6 +33,16 @@ class TestSupervisorStateMachine(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.notify = []
         self.now = 1000.0
+        # never write the real cwd-relative state/ files: a suite run from
+        # ~/nightshift must not append to the live log (test pollution)
+        self._patches = [
+            unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
+                                       os.path.join(self.tmp, "log.jsonl")),
+            unittest.mock.patch.object(supervisor, "RECEIPTS_PATH",
+                                       os.path.join(self.tmp, "receipts.json"))]
+        for _p in self._patches:
+            _p.start()
+            self.addCleanup(_p.stop)
 
     def test_dispatch_one_lap_at_a_time(self):
         deps = fake_deps(self.tmp, self.notify, claim_result={"issue": 5, "path": "x"})
@@ -121,6 +131,14 @@ if __name__ == "__main__":
     unittest.main()
 class TestNotifyGuard(unittest.TestCase):
     """notify is best-effort: an ntfy outage never kills a lap."""
+    def setUp(self):
+        # never write the real state/evidence/ntfy receipts (test pollution)
+        self._p = unittest.mock.patch.object(
+            supervisor, "RECEIPTS_PATH",
+            os.path.join(tempfile.mkdtemp(), "receipts.json"))
+        self._p.start()
+        self.addCleanup(self._p.stop)
+
     def test_notify_swallows_transport_failure(self):
         import urllib.error
         def boom(req, timeout):
@@ -206,6 +224,15 @@ class TestParkAndContinue(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.notify = []
         self.now = 1000.0
+        # never write the real cwd-relative state/ files (test pollution)
+        self._patches = [
+            unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
+                                       os.path.join(self.tmp, "log.jsonl")),
+            unittest.mock.patch.object(supervisor, "RECEIPTS_PATH",
+                                       os.path.join(self.tmp, "receipts.json"))]
+        for _p in self._patches:
+            _p.start()
+            self.addCleanup(_p.stop)
 
     def _state_with_parked(self):
         state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
@@ -261,6 +288,7 @@ class TestParkAndContinue(unittest.TestCase):
     def test_blocked_exit_nonzero_drained_exit_zero(self):
         # main-loop: BLOCKED -> exit 1; DRAIN -> clean break (exit 0)
         def run_main(events):
+            cwd = tempfile.mkdtemp()  # subprocess state writes land here, never the real state/
             with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
                 f.write("""
 import sys
@@ -272,7 +300,8 @@ supervisor.save_state = lambda s, p: None
 supervisor.LAP_WALLCLOCK_LIMIT_S = 10**9
 supervisor.main()
 """ % (os.path.join(os.path.dirname(__file__), "..", "src"), events))
-            r = subprocess.run([sys.executable, f.name], capture_output=True, text=True)
+            r = subprocess.run([sys.executable, f.name], capture_output=True,
+                                text=True, cwd=cwd)
             os.unlink(f.name)
             return r.returncode
 
@@ -536,3 +565,36 @@ class TestReconcileDeadClaims(unittest.TestCase):
         os.remove(os.path.join(self.claims, "issue-5.json"))
         self.run_reconcile(state)  # nothing left
         self.assertEqual(state["issues"]["5"]["retries"], 1)
+
+
+class TestNoRealStateWrites(unittest.TestCase):
+    """Regression: a suite run from a nightshift-style cwd (a checkout with
+    a live state/ dir) must write NOTHING to the cwd-relative real state
+    files — the launch-1 test-pollution incident appended 43 rows to the
+    live interventions.jsonl (state/interventions.jsonl.testpollution-*)."""
+
+    def test_suite_from_nightshift_cwd_writes_no_real_state(self):
+        if os.environ.get("FACTORY_NESTED_SUITE"):
+            self.skipTest("nested suite run")
+        import shutil
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cwd = tempfile.mkdtemp(prefix="factory-pollution-")
+        shutil.copytree(repo, os.path.join(cwd, "repo"),
+                        ignore=shutil.ignore_patterns(
+                            "__pycache__", ".git", ".jj", "state"))
+        state = os.path.join(cwd, "repo", "state")
+        os.makedirs(os.path.join(state, "evidence", "ntfy"))
+        log = os.path.join(state, "interventions.jsonl")
+        receipts = os.path.join(state, "evidence", "ntfy", "receipts.json")
+        with open(log, "w") as f:
+            f.write('{"sentinel": true}\n')
+        with open(receipts, "w") as f:
+            f.write('{"sentinel": true}\n')
+        r = subprocess.run([sys.executable, "-m", "unittest", "tests.test_supervisor"],
+                           cwd=os.path.join(cwd, "repo"), capture_output=True,
+                           text=True, env={**os.environ, "FACTORY_NESTED_SUITE": "1"})
+        self.assertEqual(r.returncode, 0, msg=r.stderr[-2000:])
+        with open(log) as f:
+            self.assertEqual(f.read(), '{"sentinel": true}\n')
+        with open(receipts) as f:
+            self.assertEqual(f.read(), '{"sentinel": true}\n')
