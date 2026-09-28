@@ -1,0 +1,40 @@
+[
+ {
+  "name": "issue-21-empty-content-rejected",
+  "description": "POST with empty-string content must 400 with an error and mint no paste; single-char content still 201",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "body": {
+     "content": ""
+    },
+    "expect_body_fragment": "error"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "x"
+    },
+    "expect_body_fragment": "id"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "body": {
+     "content": 42
+    }
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "body": {}
+   }
+  ]
+ }
+]
