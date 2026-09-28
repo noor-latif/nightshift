@@ -1,5 +1,8 @@
 """Literal configuration for the factory spike. No config framework."""
 
+import os
+
+
 REPO_HOST = "nixlab"
 PRODUCT_REPO = "~/factory-lab/toy-product"  # remote path on REPO_HOST
 GITHUB_REPO = "noor-latif/toy-product"
@@ -13,8 +16,12 @@ IMPLEMENTER_REASONING_EFFORT = "high"  # effort=max returns empty content; high 
 REVIEWER_MODEL = "glm-5.3-flash"
 RETRY_BUDGET = 2
 MAX_CONCURRENT_LAPS = 1
-NTFY_TOPIC = "nightshift-388c2cd67dbf9d80"
-NTFY_URL = "https://ntfy.sh/" + NTFY_TOPIC
+# Public-subscription leak fix: the old hardcoded topic is public on origin
+# main. From env only; empty default = notify() skips transport but still
+# writes its receipt (receipts are the S7 evidence; the phone channel is
+# optional). NTFY_TOPIC goes in the LAUNCH ENV, never in any file.
+NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
+NTFY_URL = ("https://ntfy.sh/" + NTFY_TOPIC) if NTFY_TOPIC else ""
 LAP_WALLCLOCK_LIMIT_S = 10800
 SESSION_WALLCLOCK_LIMIT_S = 14400  # session backstop ≥ per-lap: luna lap ≈ 3×16min + review/verify
 COST_CEILING_USD = 0.01

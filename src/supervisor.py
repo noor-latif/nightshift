@@ -82,7 +82,20 @@ def notify(text, title="nightshift", url=NTFY_URL, opener=None):
     """One ntfy POST per terminal state. Inline by design, not a module.
     Best-effort: a failed notification must never kill a lap. On success the
     receipt is appended to state/evidence/ntfy/receipts.json (S7: a
-    notification without a receipt is unobservable)."""
+    notification without a receipt is unobservable).
+
+    Empty url (NTFY_TOPIC unset): no transport — but the receipt is still
+    written; receipts are the S7 evidence, the phone channel is optional."""
+    if not url:
+        try:
+            os.makedirs(os.path.dirname(RECEIPTS_PATH), exist_ok=True)
+            with open(RECEIPTS_PATH, "a") as f:
+                f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                        time.gmtime()),
+                                    "status": "no-transport", "message": text}) + "\n")
+        except OSError:
+            pass
+        return None
     try:
         data = json.dumps({"topic": url.rstrip("/").rsplit("/", 1)[-1],
                            "title": title, "message": text}).encode()
