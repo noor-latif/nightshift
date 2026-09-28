@@ -26,6 +26,7 @@ from settings import (
 RESULT_PATH = os.path.join(STATE_DIR, "lap-result.json")
 RUNTIME_LOG_PATH = os.path.join(STATE_DIR, "interventions.jsonl")
 LOCK_PATH = os.path.join(STATE_DIR, "supervisor.lock")
+RECEIPTS_PATH = os.path.join(STATE_DIR, "evidence", "ntfy", "receipts.json")
 
 
 def acquire_instance_lock(path=LOCK_PATH):
@@ -77,10 +78,11 @@ def runtime_log(event, path=None, **fields):
     with open(path, "a") as f:
         f.write(json.dumps(row, default=str) + "\n")
 
-
 def notify(text, title="nightshift", url=NTFY_URL, opener=None):
     """One ntfy POST per terminal state. Inline by design, not a module.
-    Best-effort: a failed notification must never kill a lap."""
+    Best-effort: a failed notification must never kill a lap. On success the
+    receipt is appended to state/evidence/ntfy/receipts.json (S7: a
+    notification without a receipt is unobservable)."""
     try:
         data = json.dumps({"topic": url.rstrip("/").rsplit("/", 1)[-1],
                            "title": title, "message": text}).encode()
@@ -88,6 +90,14 @@ def notify(text, title="nightshift", url=NTFY_URL, opener=None):
         open_fn = opener.open if opener else urllib.request.urlopen
         resp = open_fn(req, timeout=10)
         resp.read()
+        try:
+            os.makedirs(os.path.dirname(RECEIPTS_PATH), exist_ok=True)
+            with open(RECEIPTS_PATH, "a") as f:
+                f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                        time.gmtime()),
+                                    "status": resp.status, "message": text}) + "\n")
+        except OSError:
+            pass  # receipt failure must not kill the lap either
         return resp.status
     except OSError as e:
         print("notify failed: %s" % e, file=sys.stderr, flush=True)

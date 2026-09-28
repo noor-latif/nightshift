@@ -127,6 +127,7 @@ class TestNotifyGuard(unittest.TestCase):
             raise urllib.error.URLError("ntfy down")
         status = supervisor.notify("x", opener=type("O", (), {"open": staticmethod(boom)})())
         self.assertIsNone(status)
+
     def test_notify_success_returns_status(self):
         class Resp:
             status = 200
@@ -136,6 +137,34 @@ class TestNotifyGuard(unittest.TestCase):
             return Resp()
         status = supervisor.notify("x", opener=type("O", (), {"open": staticmethod(ok)})())
         self.assertEqual(status, 200)
+
+    def test_notify_success_writes_receipt(self):
+        import tempfile as _t
+        class Resp:
+            status = 200
+            def read(self):
+                return b"ok"
+        receipts = os.path.join(_t.mkdtemp(), "receipts.json")
+        with unittest.mock.patch.object(supervisor, "RECEIPTS_PATH", receipts):
+            supervisor.notify("lap issue 5: GREEN",
+                              opener=type("O", (), {"open": staticmethod(
+                                  lambda req, timeout: Resp())})())
+        with open(receipts) as f:
+            rows = [json.loads(line) for line in f]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], 200)
+        self.assertEqual(rows[0]["message"], "lap issue 5: GREEN")
+
+    def test_notify_failure_writes_no_receipt(self):
+        import tempfile as _t
+        import urllib.error
+        receipts = os.path.join(_t.mkdtemp(), "receipts.json")
+        def boom(req, timeout):
+            raise urllib.error.URLError("ntfy down")
+        with unittest.mock.patch.object(supervisor, "RECEIPTS_PATH", receipts):
+            self.assertIsNone(supervisor.notify(
+                "x", opener=type("O", (), {"open": staticmethod(boom)})()))
+        self.assertFalse(os.path.exists(receipts))
 
 
 class TestParkAndContinue(unittest.TestCase):
