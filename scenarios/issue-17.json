@@ -1,0 +1,36 @@
+[
+ {
+  "name": "issue-17-post-query-string",
+  "description": "POST /paste with a query string behaves exactly like POST /paste: 201 + id; bad body still 400",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste?x=1",
+    "expected_status": 201,
+    "body": {
+     "content": "hello"
+    },
+    "expect_body_fragment": "id",
+    "save": "pid"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/paste/{{pid}}?v=1",
+    "expected_status": 200,
+    "expect_body_fragment": "hello"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste?x=1",
+    "expected_status": 400,
+    "raw_body": "not json at all",
+    "expect_body_fragment": "invalid JSON body"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/stats",
+    "expected_status": 200
+   }
+  ]
+ }
+]

@@ -13,11 +13,12 @@ import http.client
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
 import urllib.request
-
+import tempfile
 from settings import PROVENANCE_ENV, READY_TIMEOUT_S, SCENARIO_PORT_RANGE
 
 
@@ -105,10 +106,29 @@ def wait_ready(port, deadline_s=READY_TIMEOUT_S):
     raise Hold("candidate never became ready: %s" % last_err)
 
 
-def http_req(method, host, port, path, body=None, raw_body=None, headers=None):
+def http_req(method, host, port, path, body=None, raw_body=None, headers=None,
+             chunked=False):
     conn = http.client.HTTPConnection(host, port, timeout=10)
     payload = None
     hdrs = dict(headers or {})
+    if chunked:
+        # Transfer-Encoding: chunked on the wire: http.client encodes the
+        # iterable itself; no Content-Length is sent (issue #19's repro shape)
+        raw = raw_body.encode() if raw_body is not None else json.dumps(body).encode()
+        payload = [raw]
+        hdrs["Transfer-Encoding"] = "chunked"
+        conn.putrequest(method, path)
+        for k, v in hdrs.items():
+            conn.putheader(k, v)
+        if "Content-Type" not in hdrs and body is not None and raw_body is None:
+            conn.putheader("Content-Type", "application/json")
+        conn.endheaders(encode_chunked=True)
+        for chunk in payload:
+            conn.send(chunk)
+        resp = conn.getresponse()
+        data = resp.read().decode("utf-8", errors="replace")
+        conn.close()
+        return resp.status, data
     if raw_body is not None:
         payload = raw_body.encode()
     elif body is not None:
@@ -154,6 +174,7 @@ def evaluate_assertion(assertion, port, saved, revision=None):
             assertion["method"], host, p, path,
             body=assertion.get("body"), raw_body=assertion.get("raw_body"),
             headers=assertion.get("headers"),
+            chunked=assertion.get("chunked"),
         )
     except OSError as e:
         return {"assertion": assertion["url"], "status": "HOLD", "detail": str(e)}
@@ -187,7 +208,13 @@ def evaluate_assertion(assertion, port, saved, revision=None):
 
 
 def run_scenario(scenario, checkout_cwd, pid_file, port=None):
-    """Boot candidate, run all assertions, tear down. Evidence = per-assertion."""
+    """Boot candidate, run all assertions, tear down. Evidence = per-assertion.
+
+    scenario["boot_cwd"] == "no-git" boots a plain copy of the checkout
+    WITHOUT .git (issue #18: the server must serve /health outside a git
+    repo). The provenance revision is still captured from checkout_cwd —
+    the real worktree — so non-git boots never corrupt provenance evidence.
+    """
     results = {"scenario": scenario["name"], "checks": []}
     saved = {}
     port = free_port(port)
@@ -201,13 +228,28 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
         ["git", "rev-parse", "HEAD"], cwd=checkout_cwd,
         capture_output=True, text=True, check=True,
     ).stdout.strip()
+    boot_dir = checkout_cwd
+    tmp_boot = None
+    if scenario.get("boot_cwd") == "no-git":
+        tmp_boot = tempfile.mkdtemp(prefix="factory-nogit-")
+        for name in os.listdir(checkout_cwd):
+            if name == ".git" or name.startswith(".factory"):
+                continue
+            src = os.path.join(checkout_cwd, name)
+            if os.path.isfile(src):
+                shutil.copy(src, os.path.join(tmp_boot, name))
+            else:
+                shutil.copytree(src, os.path.join(tmp_boot, name))
+        boot_dir = tmp_boot
     try:
-        boot_candidate(checkout_cwd, port, pid_file)
-        wait_ready(port)
+        boot_candidate(boot_dir, port, pid_file)
+        wait_ready(port, path=scenario.get("ready_path", "/health"))
         for a in scenario["assertions"]:
             results["checks"].append(evaluate_assertion(a, port, saved, revision))
     finally:
         stop_candidate(pid_file)
+        if tmp_boot:
+            shutil.rmtree(tmp_boot, ignore_errors=True)
     results["verdict"] = (
         "pass" if all(c["status"] == "pass" for c in results["checks"]) and results["checks"]
         else ("hold" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")

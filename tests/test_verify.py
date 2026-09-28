@@ -76,12 +76,16 @@ class ToyApp(BaseHTTPRequestHandler):
 def load_scenarios():
     d = os.path.join(os.path.dirname(__file__), "..", "scenarios")
     out = []
-    for name in sorted(os.listdir(d)):
-        if name.endswith(".json"):
-            with open(os.path.join(d, name)) as f:
-                data = json.load(f)
-            # a file may hold one scenario or a list of scenarios
-            out.extend(data if isinstance(data, list) else [data])
+    # global files only — the same selection rule as verify.scenario_paths().
+    # Per-issue oracles are RED on main by construction (RED-first); a
+    # fixture that mirrors main MUST fail them, so they cannot be asserted
+    # green here.
+    for name in sorted(n for n in os.listdir(d)
+                       if n.endswith(".json") and not n.startswith("issue-")):
+        with open(os.path.join(d, name)) as f:
+            data = json.load(f)
+        # a file may hold one scenario or a list of scenarios
+        out.extend(data if isinstance(data, list) else [data])
     return out
 
 

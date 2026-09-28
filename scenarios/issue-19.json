@@ -1,0 +1,40 @@
+[
+ {
+  "name": "issue-19-chunked-post",
+  "description": "POST /paste with Transfer-Encoding: chunked behaves like the Content-Length path: 201 + id; non-JSON chunked still 400",
+  "assertions": [
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 201,
+    "body": {
+     "content": "chunked hello"
+    },
+    "chunked": true,
+    "expect_body_fragment": "id",
+    "save": "pid"
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/paste/{{pid}}",
+    "expected_status": 200,
+    "expect_body_fragment": "chunked hello"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "raw_body": "not json at all",
+    "chunked": true,
+    "expect_body_fragment": "invalid JSON body"
+   },
+   {
+    "method": "POST",
+    "url": "http://127.0.0.1:{{port}}/paste",
+    "expected_status": 400,
+    "raw_body": "still not json",
+    "expect_body_fragment": "invalid JSON body"
+   }
+  ]
+ }
+]

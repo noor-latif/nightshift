@@ -1,0 +1,16 @@
+[
+ {
+  "name": "issue-18-health-outside-git",
+  "description": "GET /health outside a git repo: 200, status ok, revision present as a string (placeholder allowed)",
+  "boot_cwd": "no-git",
+  "ready_path": "/stats",
+  "assertions": [
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/health",
+    "expected_status": 200,
+    "expect_body_fragment": "\"status\": \"ok\""
+   }
+  ]
+ }
+]
