@@ -67,12 +67,17 @@ def _gh(args):
     return r.stdout
 
 
+def _worktree_path(issue, prefix="agent"):
+    return os.path.join(os.path.expanduser(PRODUCT_REPO), ".factory",
+                        "worktrees", "%s-issue-%d" % (prefix, issue))
+
+
 def worktree_for(issue, prefix="agent"):
     """<prefix>/issue-<n> worktree under the product repo's .factory dir.
     Laps use the factory-owned agent/ ref; the dispatch-time RED re-check
     (L-013) uses a throwaway recheck/ ref it never pushes."""
     repo = os.path.expanduser(PRODUCT_REPO)
-    path = os.path.join(repo, ".factory", "worktrees", "%s-issue-%d" % (prefix, issue))
+    path = _worktree_path(issue, prefix)
     branch = "%s/issue-%d" % (prefix, issue)
     _git(["fetch", "origin", "main", "--prune"], repo)
     _worktree_add(repo, path, branch)
@@ -350,7 +355,9 @@ def run(issue):
     hb = threading.Thread(target=lap.heartbeat_loop, daemon=True)
     hb.start()
     lap.event("lap-start", issue=issue, run_id=lap.run_id)
-    worktree = None
+    # the cleanup path must hold the path even if worktree_for raises before
+    # assignment (L-016): a skipped finally is how the crash loop started
+    worktree = _worktree_path(issue)
     try:
         worktree = worktree_for(issue)
         data = issue_data(issue)
