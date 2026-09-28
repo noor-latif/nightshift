@@ -369,3 +369,84 @@ class TestDispatchRedRecheck(unittest.TestCase):
         recheck = [r for r in rows if r["event"] == "red-recheck"][0]
         self.assertEqual(recheck["issue"], 5)
         self.assertEqual(recheck["verdict"], "pass")
+
+class TestReconcileDeadClaims(unittest.TestCase):
+    """L-009 reap + crash-retry accounting: crashed laps are counted, never
+    silently retried."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.claims = os.path.join(self.tmp, "claims")
+        os.makedirs(self.claims)
+        self.result = os.path.join(self.tmp, "lap-result.json")
+        self.log = os.path.join(self.tmp, "log.jsonl")
+
+    def claim(self, issue, claimed_at=900.0):
+        path = os.path.join(self.claims, "issue-%d.json" % issue)
+        with open(path, "w") as f:
+            json.dump({"issue": issue, "claimed_at": claimed_at}, f)
+        return path
+
+    def run_reconcile(self, state):
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
+            return supervisor.reconcile_dead_claims(1000.0, state, self.claims,
+                                                    result_path=self.result)
+
+    def test_unaccounted_crash_counts_retries_at_reap(self):
+        # orphan claim, no terminal result anywhere: the crash must consume
+        # retry budget — never resurface as a free silent retry
+        path = self.claim(5)
+        state = {"issues": {}}
+        dead = self.run_reconcile(state)
+        self.assertEqual(dead, [(path, {"issue": 5, "claimed_at": 900.0})])
+        self.assertEqual(state["issues"]["5"]["retries"], 1)
+        self.assertEqual(state["issues"]["5"]["disposition"], "retry")
+        with open(self.log) as f:
+            rows = [json.loads(line) for line in f]
+        self.assertEqual(rows[-1]["event"], "intervention")
+        self.assertIn("crash counted at reap", rows[-1]["detail"])
+
+    def test_terminal_result_claim_reaped_without_double_count(self):
+        # its lap already reached handle_lap_end (counted there)
+        path = self.claim(5)
+        with open(self.result, "w") as f:
+            json.dump({"issue": 5, "outcome": "failure"}, f)
+        state = {"issues": {"5": {"retries": 1, "disposition": "retry"}}}
+        dead = self.run_reconcile(state)
+        self.assertEqual(len(dead), 1)
+        self.assertEqual(state["issues"]["5"]["retries"], 1)  # unchanged
+
+    def test_parked_issue_claim_reaped_without_count(self):
+        path = self.claim(5)
+        state = {"issues": {"5": {"retries": 3, "disposition": "parked"}}}
+        dead = self.run_reconcile(state)
+        self.assertEqual(len(dead), 1)
+        self.assertEqual(state["issues"]["5"]["retries"], 3)
+
+    def test_unparseable_claim_reaped(self):
+        path = os.path.join(self.claims, "issue-5.json")
+        with open(path, "w") as f:
+            f.write("not json")
+        dead = self.run_reconcile({"issues": {}})
+        self.assertEqual(len(dead), 1)
+        self.assertEqual(dead[0][1]["issue"], None)
+
+    def test_foreign_result_file_not_terminal(self):
+        # result for a different issue must not mark this claim terminal
+        self.claim(5)
+        with open(self.result, "w") as f:
+            json.dump({"issue": 7, "outcome": "failure"}, f)
+        state = {"issues": {}}
+        self.run_reconcile(state)
+        self.assertEqual(state["issues"]["5"]["retries"], 1)  # crash counted
+
+    def test_repeated_reap_of_same_orphan_counts_once(self):
+        # second reconcile sees the same claim again only if the caller did
+        # not break it; handle_outcome already moved retries — but a claim
+        # broken by the caller is gone, so no double count in practice.
+        self.claim(5)
+        state = {"issues": {}}
+        self.run_reconcile(state)
+        os.remove(os.path.join(self.claims, "issue-5.json"))
+        self.run_reconcile(state)  # nothing left
+        self.assertEqual(state["issues"]["5"]["retries"], 1)

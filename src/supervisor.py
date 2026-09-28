@@ -260,6 +260,57 @@ def tick(state, now, deps):
     save_state(state, deps["state_path"])
     return events
 
+def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
+    """L-009 + crash-retry accounting: claim files no live lap owns.
+
+    Two reap classes, counted differently:
+    - terminal-result claim (its lap reached handle_lap_end) or durably
+      parked/merged issue: reap only — already accounted.
+    - orphan claim with NO terminal result (a lap crashed between
+      supervisor restarts and nothing ever saw the outcome): reap AND
+      count the crash through selector.handle_outcome — the crash must
+      consume retry budget, never surface as a free silent retry.
+    Returns [(path, claim), ...] for the caller to break and log.
+    """
+    from selector import OUTCOMES, handle_outcome, read_claim
+
+    dead = []
+    for name in sorted(os.listdir(claims_dir)):
+        if not name.startswith("issue-"):
+            continue
+        path = os.path.join(claims_dir, name)
+        try:
+            claim = read_claim(path)
+        except Exception:
+            dead.append((path, {"issue": None}))
+            continue
+        issue = claim.get("issue")
+        rec = state.get("issues", {}).get(str(issue), {})
+        if rec.get("disposition") in ("parked", "timeout-park", "merged"):
+            dead.append((path, claim))
+            continue
+        terminal = False
+        if os.path.exists(result_path):
+            try:
+                with open(result_path) as f:
+                    r = json.load(f)
+                if r.get("issue") == issue and r.get("outcome") in OUTCOMES:
+                    terminal = True
+            except (OSError, ValueError):
+                pass
+        if terminal:
+            dead.append((path, claim))
+        elif issue is not None:
+            # unaccounted crash: count it now, never a free retry
+            disposition = handle_outcome("crash", issue, state, now)
+            runtime_log("intervention",
+                        detail="orphan claim reaped with no terminal result "
+                               "(crash counted at reap): %s" % path,
+                        issue=issue, disposition=disposition)
+            dead.append((path, claim))
+    return dead
+
+
 
 def main():
     """Real loop: claim -> dispatch -> watch -> park/retry per selector budget."""
@@ -307,35 +358,8 @@ def main():
     observations = []  # per-tick intervention observations, shared with handle_lap_end
 
     def reconcile_claims(now):
-        """L-009: reap claim files no live lap owns — a claim whose issue has
-        a terminal lap-result, or a claim for an issue durably parked/merged.
-        The no-op this replaces deadlocked the queue after any restart."""
-        from selector import read_claim
-
-        dead = []
-        claims_dir = os.path.join(STATE_DIR, "claims")
-        for name in sorted(os.listdir(claims_dir)):
-            if not name.startswith("issue-"):
-                continue
-            path = os.path.join(claims_dir, name)
-            try:
-                claim = read_claim(path)
-            except Exception:
-                dead.append((path, {"issue": None}))
-                continue
-            issue = claim.get("issue")
-            rec = (box.get("state") or {}).get("issues", {}).get(str(issue), {})
-            if rec.get("disposition") in ("parked", "timeout-park", "merged"):
-                dead.append((path, claim))
-            elif os.path.exists(RESULT_PATH):
-                try:
-                    with open(RESULT_PATH) as f:
-                        r = json.load(f)
-                    if r.get("issue") == issue and r.get("outcome") in OUTCOMES:
-                        dead.append((path, claim))
-                except (OSError, ValueError):
-                    pass
-        return dead
+        return reconcile_dead_claims(now, box.get("state") or {},
+                                     os.path.join(STATE_DIR, "claims"))
 
     def red_recheck(issue):
         """L-013: re-run the issue's scenario against fresh origin/main
