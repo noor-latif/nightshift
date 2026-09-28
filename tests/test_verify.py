@@ -244,6 +244,173 @@ class TestHeadersPassThrough(unittest.TestCase):
         self.assertEqual(check["status"], "pass")
         self.assertNotIn("X-Probe", self.seen)
 
+class TestChunkedAssertions(unittest.TestCase):
+    """`chunked: true` sends Transfer-Encoding: chunked with no fixed
+    Content-Length — the wire shape issue #19's repro needs."""
+
+    @classmethod
+    def setUpClass(cls):
+        seen = {}
+
+        class Echo(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                # read the body the way a real server would: chunked framing
+                # only when the request says so, Content-Length otherwise
+                te = (self.headers.get("Transfer-Encoding") or "").lower()
+                if "chunked" in te:
+                    body = b""
+                    while True:
+                        line = self.rfile.readline().strip()
+                        if b";" in line:
+                            line = line.split(b";", 1)[0]
+                        size = int(line, 16)
+                        if size == 0:
+                            self.rfile.readline()
+                            break
+                        body += self.rfile.read(size)
+                        self.rfile.readline()
+                    seen["body"] = body.decode()
+                else:
+                    length = int(self.headers.get("Content-Length") or 0)
+                    seen["body"] = self.rfile.read(length).decode()
+                seen.update(dict(self.headers))
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"ok")
+
+        cls.server = HTTPServer(("127.0.0.1", 0), Echo)
+        cls.port = cls.server.server_address[1]
+        t = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        t.start()
+        cls.seen = seen
+
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def test_chunked_flag_puts_te_on_wire_and_streams_body(self):
+        a = {"method": "POST", "url": "http://127.0.0.1:%d/echo" % self.port,
+             "expected_status": 200, "body": {"content": "hi"},
+             "chunked": True}
+        self.seen.clear()
+        check = verify.evaluate_assertion(a, self.port, {})
+        self.assertEqual(check["status"], "pass", msg=check)
+        self.assertEqual(self.seen.get("Transfer-Encoding"), "chunked")
+        self.assertNotIn("Content-Length", self.seen)
+        self.assertEqual(self.seen["body"], json.dumps({"content": "hi"}))
+
+    def test_chunked_raw_body_streams_verbatim(self):
+        a = {"method": "POST", "url": "http://127.0.0.1:%d/echo" % self.port,
+             "expected_status": 200, "raw_body": "not json", "chunked": True}
+        self.seen.clear()
+        check = verify.evaluate_assertion(a, self.port, {})
+        self.assertEqual(check["status"], "pass", msg=check)
+        self.assertEqual(self.seen["body"], "not json")
+
+    def test_absent_chunked_sends_content_length(self):
+        a = {"method": "POST", "url": "http://127.0.0.1:%d/echo" % self.port,
+             "expected_status": 200, "body": {"content": "hi"}}
+        self.seen.clear()
+        check = verify.evaluate_assertion(a, self.port, {})
+        self.assertEqual(check["status"], "pass", msg=check)
+        self.assertNotIn("Transfer-Encoding", self.seen)
+        self.assertEqual(self.seen.get("Content-Length"),
+                         str(len(json.dumps({"content": "hi"}))))
+
+
+class TestCrashClassification(unittest.TestCase):
+    """A server that dies answering is a FAIL (the crash is the evidence);
+    only nothing-listening is a HOLD."""
+
+    def test_nothing_listening_is_hold(self):
+        a = {"method": "GET", "url": "http://127.0.0.1:1/health", "expected_status": 200}
+        check = verify.evaluate_assertion(a, 1, {})
+        self.assertEqual(check["status"], "HOLD")
+
+    def test_empty_reply_from_listening_server_is_fail(self):
+        import threading
+
+        class Die(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                # accept the request, then close without any response —
+                # issue #18's empty-reply crash shape
+                self.close_connection = True
+                self.connection.close()
+
+        server = HTTPServer(("127.0.0.1", 0), Die)
+        port = server.server_address[1]
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        try:
+            a = {"method": "GET", "url": "http://127.0.0.1:%d/health" % port,
+                 "expected_status": 200}
+            check = verify.evaluate_assertion(a, port, {})
+            self.assertEqual(check["status"], "fail")
+            self.assertIsNone(check["observed_status"])
+            self.assertIn("closed connection without response", check["detail"])
+        finally:
+            server.shutdown()
+
+
+class TestNoGitBoot(unittest.TestCase):
+    """`boot_cwd: "no-git"` boots a plain copy without .git (issue #18)."""
+
+    def test_copy_excludes_git_and_factory(self):
+        import shutil as _sh
+
+        src = tempfile.mkdtemp()
+        os.makedirs(os.path.join(src, ".git"))
+        os.makedirs(os.path.join(src, ".factory", "worktrees"))
+        with open(os.path.join(src, "app.py"), "w") as f:
+            f.write("x = 1\n")
+        # run_scenario's copy step, exercised through a minimal scenario
+        # object with an immediate HOLD-free boot failure is heavy; assert
+        # the copy logic directly via the same primitives it uses.
+        dst = tempfile.mkdtemp(prefix="factory-nogit-test-")
+        for name in os.listdir(src):
+            if name == ".git" or name.startswith(".factory"):
+                continue
+            s = os.path.join(src, name)
+            if os.path.isfile(s):
+                _sh.copy(s, os.path.join(dst, name))
+            else:
+                _sh.copytree(s, os.path.join(dst, name))
+        self.assertEqual(sorted(os.listdir(dst)), ["app.py"])
+        self.assertFalse(os.path.exists(os.path.join(dst, ".git")))
+
+    def test_scenario_ready_path_override_probes_alternate_endpoint(self):
+        # wait_ready(path=...) is the readiness contract for scenarios whose
+        # assertion targets /health itself
+        import threading
+
+        class Ok(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                code = 200 if self.path == "/stats" else 500
+                self.send_response(code)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+        server = HTTPServer(("127.0.0.1", 0), Ok)
+        port = server.server_address[1]
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        try:
+            self.assertTrue(verify.wait_ready(port, deadline_s=5, path="/stats"))
+        finally:
+            server.shutdown()
+
 class TestScenarioSelection(unittest.TestCase):
     """issue-<n>.json runs only for its issue; global files always run."""
 

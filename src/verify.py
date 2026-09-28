@@ -52,6 +52,10 @@ def free_port(prefer=None):
     candidates = [prefer] if prefer else range(lo, hi)
     for p in candidates:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            # SO_REUSEADDR: a just-closed candidate's TIME_WAIT sockets must
+            # not make the probe (or the next boot on that port) fail —
+            # back-to-back laps otherwise exhaust the 11-port range.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind(("127.0.0.1", p))
                 return p
@@ -90,16 +94,19 @@ def stop_candidate(pid_file):
         pass
 
 
-def wait_ready(port, deadline_s=READY_TIMEOUT_S):
-    """Bounded readiness loop; last probe is /health."""
+def wait_ready(port, deadline_s=READY_TIMEOUT_S, path="/health"):
+    """Bounded readiness loop; last probe is the ready path (default /health).
+    A scenario whose assertion targets the ready endpoint itself (issue #18:
+    /health outside a git repo crashes on main — that crash IS the RED) must
+    probe readiness elsewhere via the scenario's ready_path."""
     deadline = time.time() + deadline_s
     last_err = None
     while time.time() < deadline:
         try:
-            status, _ = http_req("GET", "127.0.0.1", port, "/health")
+            status, _ = http_req("GET", "127.0.0.1", port, path)
             if status == 200:
                 return True
-            last_err = "health status %d" % status
+            last_err = "%s status %d" % (path, status)
         except OSError as e:
             last_err = str(e)
         time.sleep(0.2)
@@ -113,18 +120,15 @@ def http_req(method, host, port, path, body=None, raw_body=None, headers=None,
     hdrs = dict(headers or {})
     if chunked:
         # Transfer-Encoding: chunked on the wire: http.client encodes the
-        # iterable itself; no Content-Length is sent (issue #19's repro shape)
-        raw = raw_body.encode() if raw_body is not None else json.dumps(body).encode()
-        payload = [raw]
-        hdrs["Transfer-Encoding"] = "chunked"
-        conn.putrequest(method, path)
-        for k, v in hdrs.items():
-            conn.putheader(k, v)
-        if "Content-Type" not in hdrs and body is not None and raw_body is None:
-            conn.putheader("Content-Type", "application/json")
-        conn.endheaders(encode_chunked=True)
-        for chunk in payload:
-            conn.send(chunk)
+        # iterable itself (terminating chunk included); no Content-Length
+        # is sent (issue #19's repro shape)
+        if raw_body is not None:
+            payload = (raw_body.encode(),)
+        else:
+            hdrs.setdefault("Content-Type", "application/json")
+            payload = (json.dumps(body).encode(),)
+        conn.request(method, path, body=iter(payload), headers=hdrs,
+                     encode_chunked=True)
         resp = conn.getresponse()
         data = resp.read().decode("utf-8", errors="replace")
         conn.close()
@@ -176,6 +180,18 @@ def evaluate_assertion(assertion, port, saved, revision=None):
             headers=assertion.get("headers"),
             chunked=assertion.get("chunked"),
         )
+    except ConnectionRefusedError as e:
+        # nothing is listening: the check could not run
+        return {"assertion": assertion["url"], "status": "HOLD", "detail": str(e)}
+    except (http.client.RemoteDisconnected, ConnectionResetError) as e:
+        # the server accepted the request and died answering it — that IS
+        # the observation (issue #18's empty-reply crash). The assertion
+        # ran; the candidate's behavior failed it. Never a hold, never a
+        # pass; the crash is the evidence.
+        return {"assertion": "%s %s" % (assertion["method"], url),
+                "expected_status": assertion["expected_status"],
+                "observed_status": None, "status": "fail",
+                "detail": "server closed connection without response: %s" % e}
     except OSError as e:
         return {"assertion": assertion["url"], "status": "HOLD", "detail": str(e)}
     result = {
