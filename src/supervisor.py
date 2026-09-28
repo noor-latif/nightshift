@@ -293,10 +293,15 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
       supervisor restarts and nothing ever saw the outcome): reap AND
       count the crash through selector.handle_outcome — the crash must
       consume retry budget, never surface as a free silent retry.
+    NEVER touches the live lap's claim: state["lap"]["issue"] is mid-flight
+    (its result file is legitimately absent while it runs), and the tick
+    health-check path owns that lap's accounting. Found live at S1 launch:
+    counting it reaped the in-flight issue 0→parked in three ticks.
     Returns [(path, claim), ...] for the caller to break and log.
     """
     from selector import OUTCOMES, handle_outcome, read_claim
 
+    live_issue = (state.get("lap") or {}).get("issue")
     dead = []
     for name in sorted(os.listdir(claims_dir)):
         if not name.startswith("issue-"):
@@ -308,6 +313,8 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
             dead.append((path, {"issue": None}))
             continue
         issue = claim.get("issue")
+        if issue is not None and issue == live_issue:
+            continue  # the live lap owns this claim; mid-flight ≠ orphan
         rec = state.get("issues", {}).get(str(issue), {})
         if rec.get("disposition") in ("parked", "timeout-park", "merged"):
             dead.append((path, claim))

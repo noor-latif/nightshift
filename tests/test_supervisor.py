@@ -454,6 +454,30 @@ class TestReconcileDeadClaims(unittest.TestCase):
             return supervisor.reconcile_dead_claims(1000.0, state, self.claims,
                                                     result_path=self.result)
 
+    def test_live_lap_claim_never_counted_nor_reaped(self):
+        # S1 launch bug, found live: the in-flight lap's claim has no
+        # terminal result BY DESIGN — reconcile counted it as a crash every
+        # tick and parked the issue mid-lap. The live issue is excluded.
+        self.claim(17)
+        state = {"issues": {}, "lap": {"issue": 17, "pid": 999}}
+        dead = self.run_reconcile(state)
+        self.assertEqual(dead, [])
+        self.assertNotIn("17", state["issues"])  # no retries burned
+        self.assertTrue(os.path.exists(os.path.join(self.claims, "issue-17.json")))
+
+    def test_other_issue_orphan_still_counted_while_lap_live(self):
+        # the exclusion is only for the live issue; a true orphan for a
+        # different issue is still a counted crash
+        self.claim(17)
+        self.claim(18)
+        state = {"issues": {}, "lap": {"issue": 17, "pid": 999}}
+        dead = self.run_reconcile(state)
+        self.assertEqual([c["issue"] for _, c in dead], [18])
+        self.assertEqual(state["issues"]["18"]["retries"], 1)
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
+            return supervisor.reconcile_dead_claims(1000.0, state, self.claims,
+                                                    result_path=self.result)
+
     def test_unaccounted_crash_counts_retries_at_reap(self):
         # orphan claim, no terminal result anywhere: the crash must consume
         # retry budget — never resurface as a free silent retry
