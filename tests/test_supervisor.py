@@ -598,3 +598,90 @@ class TestNoRealStateWrites(unittest.TestCase):
             self.assertEqual(f.read(), '{"sentinel": true}\n')
         with open(receipts) as f:
             self.assertEqual(f.read(), '{"sentinel": true}\n')
+
+
+class TestMainDepsWiring(unittest.TestCase):
+    """Launch-3/launch-4 finding: main()'s REAL deps dict never wired
+    'break_claim' — tick() KeyErrored on the first dead claim reconcile
+    reported (a leftover TERMINAL claim after a merged/parked lap), killing
+    the unit seconds after a lap-end row, silently. Every existing test uses
+    fake_deps (test_supervisor.py:388 even supplies break_claim itself), so
+    119 tests stayed green while two launches died on the identical KeyError.
+    These tests drive main()'s actual deps construction, not fakes."""
+
+    def test_real_deps_cover_every_key_tick_references(self):
+        # every key tick()/handle_lap_end()/dispatch() index on deps must be
+        # present in the dict main() builds — extract it via source inspection
+        # of the real function (no execution of the loop)
+        import inspect, re as _re
+        src = inspect.getsource(supervisor.main)
+        m = _re.search(r"deps = \{(.*?)\n    \}", src, _re.S)
+        self.assertTrue(m, "could not find the real deps dict in main()")
+        keys = set(_re.findall(r'"([a-z_]+)":', m.group(1)))
+        # keys tick() and its callees reference on deps:
+        required = {"state_path", "notify", "claim", "start_lap", "kill_lap",
+                    "lap_outcome", "reconcile", "break_claim", "red_recheck",
+                    "reconcile_observations"}
+        self.assertTrue(required <= keys,
+                        "main() deps missing: %s" % (required - keys))
+
+    def test_tick_with_dead_terminal_claim_completes_on_real_deps_shape(self):
+        # one tick against a state whose claim file belongs to a TERMINAL
+        # (merged) issue, using a deps dict with exactly main()'s key set:
+        # must reap cleanly, no KeyError, no phantom crash row
+        import selector
+        tmp = tempfile.mkdtemp()
+        claims = os.path.join(tmp, "claims")
+        os.makedirs(claims)
+        claim_path = os.path.join(claims, "issue-18.json")
+        with open(claim_path, "w") as f:
+            json.dump({"issue": 18, "claimed_at": time.time() - 3600}, f)
+        state = {"issues": {"18": {"retries": 0, "disposition": "merged"}},
+                 "lap": None, "started_at": None}
+        log = os.path.join(tmp, "log.jsonl")
+        broke = []
+        deps = {  # exactly the shape main() builds, break_claim wired
+            "state_path": os.path.join(tmp, "state.json"),
+            "notify": lambda text: None,
+            "claim": lambda now: None,
+            "start_lap": lambda issue, lap: None,
+            "kill_lap": lambda lap: None,
+            "lap_outcome": lambda lap: "crash",
+            "reconcile": lambda now: supervisor.reconcile_dead_claims(
+                now, state, claims, result_path=os.path.join(tmp, "lap-result.json")),
+            "break_claim": lambda path, now: broke.append(path) or os.remove(path),
+            "red_recheck": None,
+            "reconcile_observations": [],
+        }
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", log):
+            events = supervisor.tick(state, time.time(), deps)
+        self.assertIn("reclaimed:" + claim_path, events)
+        self.assertFalse(os.path.exists(claim_path))  # reaped
+        self.assertEqual(state["issues"]["18"]["retries"], 0)  # no recount
+        with open(log) as f:
+            rows = [json.loads(line) for line in f if line.strip()]
+        self.assertEqual([r["event"] for r in rows], ["intervention"])
+        self.assertIn("orphan claim reaped", rows[0]["detail"])
+
+    def test_handle_lap_end_removes_claim_on_merged_and_parked(self):
+        # launch-4 root cleanup: terminal laps must not leave their claim
+        # file for the next tick's reconcile to trip over
+        for disposition_outcome in (("success", "merged"), ("failure", "parked")):
+            with self.subTest(outcome=disposition_outcome[0]):
+                tmp = tempfile.mkdtemp()
+                claims = os.path.join(tmp, "claims")
+                os.makedirs(claims)
+                claim_path = os.path.join(claims, "issue-5.json")
+                with open(claim_path, "w") as f:
+                    json.dump({"issue": 5, "claimed_at": time.time()}, f)
+                state = {"issues": {}, "lap": {"issue": 5,
+                                                "claim_path": claim_path,
+                                                "started_at": time.time(),
+                                                "pid": None}}
+                deps = fake_deps(tmp, [])
+                with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
+                                                os.path.join(tmp, "log.jsonl")):
+                    supervisor.handle_lap_end(state, disposition_outcome[0],
+                                              time.time(), deps)
+                self.assertFalse(os.path.exists(claim_path),
+                                 "terminal lap must remove its claim file")

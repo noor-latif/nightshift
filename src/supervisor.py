@@ -212,8 +212,13 @@ def handle_lap_end(state, outcome, now, deps):
     runtime_log("lap-check", issue=issue, observed=observed)
     if observed:
         runtime_log("intervention", issue=issue, detail=observed)
-    if disposition == "retry":
-        # release the claim so the retry can re-acquire the same issue
+    if disposition in ("retry", "merged", "parked", "timeout-park"):
+        # retry: release so the retry re-acquires the same issue.
+        # merged/parked/timeout-park are TERMINAL: the claim file is removed
+        # here too — launch-4/launch-2 finding: leaving it made reconcile
+        # report a dead claim on the next tick, which tick routed to
+        # break_claim (unwired → KeyError → silent unit death right after a
+        # lap-end row; this is what actually ended launch-2 and launch-4).
         try:
             os.remove(lap["claim_path"])
         except OSError:
@@ -344,7 +349,7 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
 
 def main():
     """Real loop: claim -> dispatch -> watch -> park/retry per selector budget."""
-    from selector import OUTCOMES, claim_next
+    from selector import OUTCOMES, break_stale_claim, claim_next
 
     state_path = os.path.join(STATE_DIR, "state.json")
     os.makedirs(STATE_DIR, exist_ok=True)
@@ -424,6 +429,13 @@ def main():
         "kill_lap": kill_lap,
         "lap_outcome": lap_outcome,
         "reconcile": reconcile_claims,
+        # launch-4 finding: tick() breaks every dead claim reconcile reports,
+        # including leftover TERMINAL claims after a merged lap — the dep was
+        # never wired, so the first post-success tick died with KeyError
+        # 'break_claim' (supervisor.py:278) and the unit failed. Reaping a
+        # terminal claim here is reap-only: its disposition is already merged,
+        # so nothing is recounted.
+        "break_claim": break_stale_claim,
         "red_recheck": red_recheck,
         "reconcile_observations": observations,
     }
@@ -433,7 +445,15 @@ def main():
         box["state"] = state
         del observations[:]
         now = time.time()
-        events = tick(state, now, deps)
+        try:
+            events = tick(state, now, deps)
+        except Exception as e:  # noqa: BLE001 - launch-2/4 finding: a bookkeeping
+            # error must NEVER silently kill an unattended night; the log
+            # simply stops otherwise, and the death goes misread. Log + continue.
+            runtime_log("tick-error", error=repr(e),
+                        traceback=__import__("traceback").format_exc())
+            time.sleep(5)
+            continue
         if "HALT" in events:
             runtime_log("session-halt", events=events)
             notify("supervisor HALT: " + ",".join(events))
