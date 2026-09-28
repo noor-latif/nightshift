@@ -156,6 +156,16 @@ class TestSelector(unittest.TestCase):
         self.assertEqual(got["issue"], 2)
         self.assertFalse(os.path.exists(os.path.join(self.issues_dir, "broken.log")))
 
+    def test_parked_record_shaped_disposition_not_reclaimed(self):
+        # production passes FULL state records {"retries": n, "disposition":
+        # "parked"} (supervisor.main box["state"]["issues"]), not bare strings
+        # — the launch-3 bug: the dict record never matched ("parked",) so a
+        # parked issue was re-claimed after every restart
+        fake = FakeGh(ISSUES, [])
+        got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,
+                                  dispositions={"1": {"retries": 3, "disposition": "parked"}})
+        self.assertEqual(got["issue"], 2)
+
     def test_issue_without_disposition_claimed_normally(self):
         fake = FakeGh(ISSUES, [])
         got = selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh,

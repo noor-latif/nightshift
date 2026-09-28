@@ -49,7 +49,9 @@ def claim_next(repo, issues_dir=CLAIMS_DIR, now=None, gh="gh", dispositions=None
     os.makedirs(issues_dir, exist_ok=True)
     pr_branches = open_pr_branches(repo, gh)
     for issue in list_open_issues(repo, gh):
-        if dispositions.get(str(issue["number"])) in ("parked", "timeout-park"):
+        rec = dispositions.get(str(issue["number"]))
+        disp = rec.get("disposition") if isinstance(rec, dict) else rec
+        if disp in ("parked", "timeout-park"):
             continue  # terminal dispositions are durable; dispatch must not burn retries again
         if "agent/issue-%d" % issue["number"] in pr_branches:
             continue
