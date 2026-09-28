@@ -69,5 +69,30 @@
         "expect_body_fragment": "{{revision}}"
       }
     ]
+  },
+  {
+    "name": "content-length-required-411",
+    "description": "POST with empty/absent Content-Length must 411, not fake 400 (issue 10 guard, now global armor: any candidate touching do_POST/_read_body must keep it)",
+    "assertions": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:{{port}}/paste",
+        "expected_status": 411,
+        "raw_body": "{\"content\":\"no length\"}",
+        "headers": {
+          "Content-Length": ""
+        },
+        "expect_body_fragment": "Content-Length required"
+      },
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:{{port}}/paste",
+        "expected_status": 201,
+        "body": {
+          "content": "with length"
+        },
+        "expect_body_fragment": "id"
+      }
+    ]
   }
 ]
