@@ -10,6 +10,12 @@
     "url": "http://127.0.0.1:{{port}}/health",
     "expected_status": 200,
     "expect_body_fragment": "\"status\": \"ok\""
+   },
+   {
+    "method": "GET",
+    "url": "http://127.0.0.1:{{port}}/health",
+    "expected_status": 200,
+    "expect_body_fragment": "revision"
    }
   ]
  }
