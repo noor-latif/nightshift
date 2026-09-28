@@ -24,6 +24,7 @@ from settings import (
 )
 
 RESULT_PATH = os.path.join(STATE_DIR, "lap-result.json")
+RUNTIME_LOG_PATH = os.path.join(STATE_DIR, "interventions.jsonl")
 LOCK_PATH = os.path.join(STATE_DIR, "supervisor.lock")
 
 
@@ -44,6 +45,37 @@ def acquire_instance_lock(path=LOCK_PATH):
         raise
     return fd
 
+
+def runtime_log(event, path=None, **fields):
+    """Append one record to the run's append-only event log (L-015).
+
+    This log is the S1 measuring instrument — S1 ("3 consecutive laps with
+    zero human interventions") must be scoreable from this file alone, with
+    no trust in anyone's memory of the night. Schema, one JSON object per
+    line:
+      {"ts": "<ISO8601 UTC>", "event": "<kind>", ...event-specific fields}
+    Event kinds (closed set, one per line):
+      session-start / session-halt / session-blocked / supervisor-restart
+        supervisor lifecycle (pid recorded)
+      dispatch — a lap was started (issue, run pid)
+      lap-end — terminal lap outcome (issue, outcome, disposition, gate)
+      lap-check — per-lap intervention audit at lap end: the "observed"
+        field lists interventions reconcile detected for this lap; an empty
+        list on every lap-check row for 3 consecutive laps is the mechanical
+        S1 zero-touch proof. Absence of the file, or a missing lap-check per
+        lap, means UNMEASURED, never "no interventions".
+      intervention — reconcile observed an artifact inconsistent with the
+        recorded outcomes (orphan claim reaped, pid mismatch, retry-counter
+        drift); a manual state edit is an intervention under the written S1
+        text, and this row is its in-run record.
+      red-recheck — dispatch-time RED re-check verdict (issue, verdict).
+    """
+    path = path or RUNTIME_LOG_PATH
+    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "event": event}
+    row.update(fields)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(row, default=str) + "\n")
 
 
 def notify(text, title="nightshift", url=NTFY_URL, opener=None):
@@ -122,6 +154,7 @@ def dispatch(state, now, deps):
     # refresh so a supervisor restarted hours later dispatches instead of HALT
     state["started_at"] = now
     deps["start_lap"](claim["issue"], state["lap"])
+    runtime_log("dispatch", issue=claim["issue"], pid=state["lap"].get("pid"))
     save_state(state, deps["state_path"])
     return "dispatched"
 
@@ -135,6 +168,12 @@ def handle_lap_end(state, outcome, now, deps):
     if outcome in ("crash", "timeout"):
         deps["kill_lap"](lap)
     disposition = handle_outcome(outcome, issue, state, now)
+    observed = deps.get("reconcile_observations") or []
+    runtime_log("lap-end", issue=issue, outcome=outcome,
+                disposition=disposition, gate=lap.get("gate"))
+    runtime_log("lap-check", issue=issue, observed=observed)
+    if observed:
+        runtime_log("intervention", issue=issue, detail=observed)
     if disposition == "retry":
         # release the claim so the retry can re-acquire the same issue
         try:
@@ -195,11 +234,14 @@ def tick(state, now, deps):
                     events.append("DRAIN:%d parked, %d merged" % (parked, merged))
 
     # reconcile: reap claims for issues with no live lap (supervisor restart)
+    observations = deps.get("reconcile_observations") or []
     for path, claim in deps.get("reconcile", lambda now: [])(now):
         if not state.get("lap") or state["lap"].get("issue") != claim["issue"]:
             deps["break_claim"](path, now)
             events.append("reclaimed:%s" % path)
-
+            note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
+            observations.append(note)
+            runtime_log("intervention", detail=note, claim=path)
     save_state(state, deps["state_path"])
     return events
 
@@ -215,6 +257,7 @@ def main():
         os.write(lock_fd, str(os.getpid()).encode())
     except OSError:
         pass  # lock content is diagnostic only; the flock is the guard
+    runtime_log("session-start", pid=os.getpid())
 
     def start_lap(issue, lap):
         logf = open(os.path.join(STATE_DIR, "lap-%d.log" % issue), "a")
@@ -246,6 +289,39 @@ def main():
         return r["outcome"]
 
     box = {}
+    observations = []  # per-tick intervention observations, shared with handle_lap_end
+
+    def reconcile_claims(now):
+        """L-009: reap claim files no live lap owns — a claim whose issue has
+        a terminal lap-result, or a claim for an issue durably parked/merged.
+        The no-op this replaces deadlocked the queue after any restart."""
+        from selector import read_claim
+
+        dead = []
+        claims_dir = os.path.join(STATE_DIR, "claims")
+        for name in sorted(os.listdir(claims_dir)):
+            if not name.startswith("issue-"):
+                continue
+            path = os.path.join(claims_dir, name)
+            try:
+                claim = read_claim(path)
+            except Exception:
+                dead.append((path, {"issue": None}))
+                continue
+            issue = claim.get("issue")
+            rec = (box.get("state") or {}).get("issues", {}).get(str(issue), {})
+            if rec.get("disposition") in ("parked", "timeout-park", "merged"):
+                dead.append((path, claim))
+            elif os.path.exists(RESULT_PATH):
+                try:
+                    with open(RESULT_PATH) as f:
+                        r = json.load(f)
+                    if r.get("issue") == issue and r.get("outcome") in OUTCOMES:
+                        dead.append((path, claim))
+                except (OSError, ValueError):
+                    pass
+        return dead
+
     deps = {
         "state_path": state_path,
         "notify": notify,
@@ -257,25 +333,31 @@ def main():
         "start_lap": start_lap,
         "kill_lap": kill_lap,
         "lap_outcome": lap_outcome,
-        "reconcile": lambda now: [],
+        "reconcile": reconcile_claims,
+        "reconcile_observations": observations,
     }
     session_started = time.time()
     while True:
         state = load_state(state_path)
         box["state"] = state
+        del observations[:]
         now = time.time()
         events = tick(state, now, deps)
         if "HALT" in events:
+            runtime_log("session-halt", events=events)
             notify("supervisor HALT: " + ",".join(events))
             break
         if any(e.startswith("DRAIN") for e in events):
+            runtime_log("session-halt", reason="drained", events=events)
             notify("queue drained: " + next(e[6:] for e in events if e.startswith("DRAIN")))
             break
         if any(e.startswith("BLOCKED") for e in events):
             blocked = next(e[8:] for e in events if e.startswith("BLOCKED"))
+            runtime_log("session-blocked", issues=blocked)
             notify("queue blocked: issue %s open PR or live claim" % blocked)
             sys.exit(1)
         if now - session_started > SESSION_WALLCLOCK_LIMIT_S:
+            runtime_log("session-halt", reason="session wallclock exceeded")
             notify("supervisor HALT: session wallclock %ds exceeded" % SESSION_WALLCLOCK_LIMIT_S)
             break
         time.sleep(5)

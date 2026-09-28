@@ -1,4 +1,5 @@
 import json
+import unittest.mock
 import os
 import subprocess
 import sys
@@ -238,3 +239,74 @@ class TestInstanceLock(unittest.TestCase):
     def test_lock_file_created_in_state_dir(self):
         self.assertTrue(supervisor.LOCK_PATH.endswith(
             os.path.join("state", "supervisor.lock")))
+
+class TestRuntimeLog(unittest.TestCase):
+    """interventions.jsonl (L-015): S1 must be scoreable from the log alone."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.log = os.path.join(self.tmp, "interventions.jsonl")
+        self.notify = []
+
+    def read_rows(self):
+        with open(self.log) as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def test_lap_end_writes_lap_end_and_lap_check_rows(self):
+        deps = fake_deps(self.tmp, self.notify, claim_result={"issue": 5, "path": "x"})
+        deps["state_path"] = os.path.join(self.tmp, "state.json")
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
+            state = supervisor.load_state(deps["state_path"])
+            supervisor.dispatch(state, 1000.0, deps)
+            supervisor.handle_lap_end(state, "failure", 1010.0, deps)
+        rows = self.read_rows()
+        kinds = [r["event"] for r in rows]
+        self.assertEqual(kinds, ["dispatch", "lap-end", "lap-check"])
+        self.assertEqual(rows[0]["issue"], 5)
+        self.assertEqual(rows[1]["outcome"], "failure")
+        # per-lap absence entry: observed list present and empty
+        self.assertEqual(rows[2]["observed"], [])
+
+    def test_observed_interventions_recorded_and_flagged(self):
+        deps = fake_deps(self.tmp, self.notify, claim_result={"issue": 5, "path": "x"})
+        deps["state_path"] = os.path.join(self.tmp, "state.json")
+        deps["reconcile_observations"] = ["orphan claim reaped: state/claims/issue-5.json"]
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
+            state = supervisor.load_state(deps["state_path"])
+            supervisor.dispatch(state, 1000.0, deps)
+            supervisor.handle_lap_end(state, "crash", 1010.0, deps)
+        rows = self.read_rows()
+        intervention = [r for r in rows if r["event"] == "intervention"]
+        self.assertEqual(len(intervention), 1)
+        self.assertIn("orphan claim", intervention[0]["detail"][0])
+        check = [r for r in rows if r["event"] == "lap-check"][0]
+        self.assertTrue(check["observed"])
+
+    def test_orphan_claim_reaped_by_tick_logs_intervention(self):
+        # L-009: a claim file left by a lap that ended between restarts must
+        # be reaped, and the reap is an intervention the log records
+        claims = os.path.join(self.tmp, "claims")
+        os.makedirs(claims)
+        claim_path = os.path.join(claims, "issue-5.json")
+        with open(claim_path, "w") as f:
+            json.dump({"issue": 5, "claimed_at": 900.0}, f)
+        broke = []
+        deps = fake_deps(self.tmp, self.notify, claim_result=None)
+        deps["state_path"] = os.path.join(self.tmp, "state.json")
+        deps["reconcile"] = lambda now: [(claim_path, {"issue": 5})]
+        deps["break_claim"] = lambda path, now: broke.append(path)
+        state = {"issues": {}, "lap": None}
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
+            events = supervisor.tick(state, 1000.0, deps)
+        self.assertEqual(broke, [claim_path])
+        self.assertIn("reclaimed:" + claim_path, events)
+        rows = self.read_rows()
+        self.assertEqual(rows[-1]["event"], "intervention")
+        self.assertIn("orphan claim reaped", rows[-1]["detail"])
+
+    def test_row_schema_ts_and_event_present(self):
+        supervisor.runtime_log("session-start", pid=1, path=self.log)
+        (row,) = self.read_rows()
+        self.assertIn("ts", row)
+        self.assertEqual(row["event"], "session-start")
+        self.assertEqual(row["pid"], 1)
