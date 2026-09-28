@@ -144,6 +144,21 @@ def dispatch(state, now, deps):
     claim = deps["claim"](now)
     if not claim:
         return "idle"
+    # L-013: never spend a lap on an already-satisfied issue. Re-prove the
+    # repro is RED on fresh main first; GREEN → reconcile as merged + skip.
+    recheck = deps.get("red_recheck")
+    if recheck:
+        verdict = recheck(claim["issue"])
+        runtime_log("red-recheck", issue=claim["issue"], verdict=verdict)
+        if verdict == "pass":
+            state.setdefault("issues", {}).setdefault(str(claim["issue"]), {"retries": 0})
+            state["issues"][str(claim["issue"])]["disposition"] = "merged"
+            try:
+                os.remove(claim["path"])
+            except OSError:
+                pass
+            save_state(state, deps["state_path"])
+            return "already-satisfied"
     state["lap"] = {
         "issue": claim["issue"],
         "claim_path": claim["path"],
@@ -322,6 +337,27 @@ def main():
                     pass
         return dead
 
+    def red_recheck(issue):
+        """L-013: re-run the issue's scenario against fresh origin/main
+        BEFORE spending a lap. 'pass' = main already satisfies it (the
+        issue is vacated — a lap would be a refactor lap, not work).
+        Anything else (fail/hold/crash) = still RED → dispatch.
+        """
+        import lap as lapmod
+        import verify
+
+        worktree = lapmod.worktree_for(issue, prefix="recheck")
+        try:
+            pid_file = os.path.join("/tmp", "factory-recheck-%d.pid" % issue)
+            scenarios_dir = os.path.join(os.path.dirname(__file__), "..", "scenarios")
+            evidence = verify.verify_candidate(worktree, pid_file, scenarios_dir, issue=issue)
+            return evidence.get("verdict")
+        except Exception:
+            return None  # recheck itself failed → treat as RED, spend the lap
+        finally:
+            subprocess.run(["git", "worktree", "remove", "--force", worktree],
+                           cwd=os.path.expanduser(lapmod.PRODUCT_REPO), capture_output=True)
+
     deps = {
         "state_path": state_path,
         "notify": notify,
@@ -334,6 +370,7 @@ def main():
         "kill_lap": kill_lap,
         "lap_outcome": lap_outcome,
         "reconcile": reconcile_claims,
+        "red_recheck": red_recheck,
         "reconcile_observations": observations,
     }
     session_started = time.time()

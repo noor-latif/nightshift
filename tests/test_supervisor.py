@@ -310,3 +310,62 @@ class TestRuntimeLog(unittest.TestCase):
         self.assertIn("ts", row)
         self.assertEqual(row["event"], "session-start")
         self.assertEqual(row["pid"], 1)
+
+class TestDispatchRedRecheck(unittest.TestCase):
+    """L-013: a lap is never spent on an issue main already satisfies."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.notify = []
+        self.starts = []
+
+    def deps(self, claim_result, red_recheck):
+        d = fake_deps(self.tmp, self.notify, claim_result=claim_result,
+                      start_calls=self.starts)
+        d["state_path"] = os.path.join(self.tmp, "state.json")
+        d["red_recheck"] = red_recheck
+        return d
+
+    def test_green_recheck_skips_lap_and_marks_merged(self):
+        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: "pass")
+        state = supervisor.load_state(deps["state_path"])
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
+                                        os.path.join(self.tmp, "log.jsonl")):
+            d = supervisor.dispatch(state, 1000.0, deps)
+        self.assertEqual(d, "already-satisfied")
+        self.assertEqual(self.starts, [])  # no lap spent
+        self.assertEqual(state["issues"]["5"]["disposition"], "merged")
+        self.assertIsNone(state.get("lap"))
+
+    def test_red_recheck_dispatches_normally(self):
+        calls = []
+        deps = self.deps({"issue": 5, "path": "claim.json"},
+                         lambda issue: calls.append(issue) or "fail")
+        state = supervisor.load_state(deps["state_path"])
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
+                                        os.path.join(self.tmp, "log.jsonl")):
+            d = supervisor.dispatch(state, 1000.0, deps)
+        self.assertEqual(d, "dispatched")
+        self.assertEqual(calls, [5])
+        self.assertEqual(state["lap"]["issue"], 5)
+
+    def test_recheck_crash_treated_as_red_and_dispatches(self):
+        # the oracle failing must not silently mark an issue merged
+        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: None)
+        state = supervisor.load_state(deps["state_path"])
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
+                                        os.path.join(self.tmp, "log.jsonl")):
+            d = supervisor.dispatch(state, 1000.0, deps)
+        self.assertEqual(d, "dispatched")
+
+    def test_red_recheck_verdict_logged(self):
+        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: "pass")
+        state = supervisor.load_state(deps["state_path"])
+        log = os.path.join(self.tmp, "log.jsonl")
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", log):
+            supervisor.dispatch(state, 1000.0, deps)
+        with open(log) as f:
+            rows = [json.loads(line) for line in f]
+        recheck = [r for r in rows if r["event"] == "red-recheck"][0]
+        self.assertEqual(recheck["issue"], 5)
+        self.assertEqual(recheck["verdict"], "pass")

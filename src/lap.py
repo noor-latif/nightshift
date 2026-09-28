@@ -67,11 +67,13 @@ def _gh(args):
     return r.stdout
 
 
-def worktree_for(issue):
-    """agent/issue-<n> worktree under the product repo's .factory dir."""
+def worktree_for(issue, prefix="agent"):
+    """<prefix>/issue-<n> worktree under the product repo's .factory dir.
+    Laps use the factory-owned agent/ ref; the dispatch-time RED re-check
+    (L-013) uses a throwaway recheck/ ref it never pushes."""
     repo = os.path.expanduser(PRODUCT_REPO)
-    path = os.path.join(repo, ".factory", "worktrees", "issue-%d" % issue)
-    branch = "agent/issue-%d" % issue
+    path = os.path.join(repo, ".factory", "worktrees", "%s-issue-%d" % (prefix, issue))
+    branch = "%s/issue-%d" % (prefix, issue)
     _git(["fetch", "origin", "main", "--prune"], repo)
     r = subprocess.run(["git", "worktree", "add", path, "-B", branch, "origin/main"],
                        cwd=repo, capture_output=True, text=True)
