@@ -101,13 +101,15 @@ def implementer_prompt(issue, criteria, n, _cache={}):
     return body
 
 
-def reviewer_prompt(diff, criteria, _cache={}):
-    """Fresh context: ONLY diff + criteria. Never the implementation reasoning."""
+def reviewer_prompt(diff, criteria, files="", _cache={}):
+    """Fresh context: diff + criteria + post-apply file view (candidate state).
+    Never the implementation reasoning. The file view exists so criteria about
+    code the diff does not touch are checkable instead of fail-closed."""
     if "reviewer" not in _cache:
         with open(os.path.join(os.path.dirname(__file__), "prompts", "reviewer.txt")) as f:
             _cache["reviewer"] = f.read()
     body = _cache["reviewer"]
-    for k, v in {"{{diff}}": diff, "{{criteria}}": criteria}.items():
+    for k, v in {"{{diff}}": diff, "{{criteria}}": criteria, "{{files}}": files}.items():
         body = body.replace(k, v)
     return body
 

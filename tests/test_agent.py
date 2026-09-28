@@ -192,6 +192,19 @@ class TestReviewerPrompt(unittest.TestCase):
         # the reviewer template must not carry implementation reasoning fields
         self.assertNotIn("reasoning", p.lower().replace("reasoning.", ""))
 
+    def test_file_view_included_and_bounded(self):
+        files = "=== app.py ===\nx = 1\n"
+        p = reviewer_prompt("+x = 2", "x is set", files=files)
+        self.assertIn("candidate state", p)
+        self.assertIn(files, p)
+
+    def test_untouched_path_instruction_present(self):
+        # the 204745 false-reject regression: criteria about code the diff
+        # does not touch must be judged from the file view, not fail-closed
+        flat = " ".join(reviewer_prompt("+x = 2", "GET strips its query string").split())
+        self.assertIn("never fail a criterion merely because the diff", flat)
+        self.assertIn("unchanged code retains its existing behavior", flat)
+
 
 if __name__ == "__main__":
     unittest.main()

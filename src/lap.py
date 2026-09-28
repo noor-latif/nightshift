@@ -385,7 +385,9 @@ def run(issue):
         with open(os.path.join(lap.evdir, "applied.diff"), "w") as f:
             f.write(branch_diff)
 
-        rev = agent.chat([{"role": "user", "content": agent.reviewer_prompt(branch_diff, criteria)}],
+        rev = agent.chat([{"role": "user", "content":
+                          agent.reviewer_prompt(branch_diff, criteria,
+                                                files="\n".join(checkout_files(worktree)))}],
                          REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS)
         lap.add_cost(rev["usage"], "reviewer")
         with open(os.path.join(lap.evdir, "review.txt"), "w") as f:
