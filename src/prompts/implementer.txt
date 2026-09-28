@@ -8,11 +8,17 @@ acceptance criteria:
 {{criteria}}
 
 You cannot run commands or see a checkout beyond the files provided; another
-process applies your patch and runs the tests. Reason step by step first,
-then output ONLY a unified diff:
+process applies your changes and runs the tests. Reason step by step first,
+then output ONLY a JSON array of mutations, each exactly:
 
-- Standard numeric hunk headers `@@ -N,M +N,M @@` are required (they may be
-  approximate; never omit them).
-- One fenced block per file.
-- New files start with `--- /dev/null`.
-- No commit banners, no prose after the diff.
+{"file": "<path>", "find": "<verbatim snippet>", "replace": "<new text>"}
+
+- "file" must be one of the provided files (use the exact name shown in
+  the === headers).
+- "find" must be a snippet copied VERBATIM from that file — the exact bytes,
+  including indentation. It must occur EXACTLY ONCE in the file (copy enough
+  surrounding lines to make it unique). Never invent context you did not see.
+- "replace" is the new text that takes the place of "find".
+- Mutations apply in array order, each on the result of the previous ones.
+- No unified diffs, no line numbers, no hunk headers. Output the JSON array
+  only — no prose before or after, no commit banners.

@@ -7,8 +7,8 @@ identity read-back -> close issue. Red anywhere = failure outcome with
 per-gate evidence; the supervisor retries/parks per selector budget.
 
 Evidence per SPIKE_PROD.md S8: state/evidence/<run-id>/ holds timeline.json,
-cost.json, verdict.json, implementer_raw.txt, claimed.diff, applied.diff,
-review.txt, verify.json, merge.json, identity.json.
+cost.json, verdict.json, implementer_raw.txt, claimed.json, mutations.json,
+applied.diff, review.txt, verify.json, merge.json, identity.json.
 
 Liveness: heartbeat touched every 10s; wall-clock breach past the budget
 writes a timeout result and exits (supervisor parks, never re-dispatches).
@@ -113,146 +113,147 @@ def criteria_from(body):
     return m.group(1).strip() if m else body
 
 
-def extract_diff(text):
-    """Pull the diff out of model prose: all fenced diff blocks, else a bare diff.
+def extract_mutations(text, allowed_files=None):
+    """Mutation-parse gate (BIGGEST_ISSUE_ANALYSIS §4): strict JSON parse +
+    shape check. DSML/prose leaks die here, as the old extract gate caught
+    them. Returns (mutations, error); exactly one is non-None.
 
-    Accepts prefix-less headers (--- app.py) — git guesses p=0 for those — and
-    normalizes every ---/+++ path to the a/ b/ form so a patch mixing
-    prefixed and prefix-less sections can't trip git's sticky p-value guess
-    (apply at the wrong path or a stray b/ dir). /dev/null stays as-is.
+    A fenced ```json block is transport noise, not content: the instrument
+    accepts what a compliant model emits (L-007's false-red lesson) — strip
+    fences and parse; anything else is prose and fails loud.
     """
-    def normalize(block):
-        lines = []
-        for line in block.split("\n"):
-            m = re.match(r"^(---|\+\+\+) (.+)$", line)
-            if m:
-                sign, rest = m.groups()
-                path, tab, tail = rest.partition("\t")
-                if path != "/dev/null" and not path.startswith(("a/", "b/")):
-                    path = ("a/" if sign == "---" else "b/") + path
-                line = "%s %s%s" % (sign, path, "\t" + tail if tab else "")
-            lines.append(line)
-        return "\n".join(lines)
+    blocks = re.findall(r"```(?:json)?\n(.*?)```", text, re.S)
+    candidates = [b.strip() for b in blocks]
+    span = _json_array_span(text)
+    if span:
+        candidates.append(span)
+    candidates.append(text.strip())
+    first_err = None
+    for payload in candidates:
+        try:
+            data = json.loads(payload)
+        except ValueError as e:
+            if first_err is None:
+                first_err = "mutation-parse: invalid JSON: %s" % e
+            continue
+        if not isinstance(data, list):
+            return None, ("mutation-parse: top-level must be a JSON array, got %s"
+                          % type(data).__name__)
+        err = _mutation_shape_error(data, allowed_files)
+        if err:
+            return None, err
+        if not data:
+            return None, "mutation-parse: empty mutation array"
+        return data, None
+    return None, first_err or "mutation-parse: no JSON payload found"
 
-    blocks = [normalize(b.strip()) for b in re.findall(r"```(?:diff)?\n(.*?)```", text, re.S)
-              if (any(l.startswith("--- ") for l in b.split("\n"))
-                  and any(l.startswith("+++ ") for l in b.split("\n")))]
-    if blocks:
-        return "\n".join(b + "\n" for b in blocks)
-    m = re.search(r"^diff --git.*", text, re.S | re.M)
-    return m.group(0).strip() + "\n" if m else None
 
-
-def declared_files(diff_text):
-    """File paths the diff's ---/+++ header pairs declare (skip /dev/null sides)."""
-    declared = set()
-    old = None
-    for line in diff_text.split("\n"):
-        if line.startswith("--- "):
-            old = line[4:].split("\t")[0]
-        elif line.startswith("+++ ") and old is not None:
-            new = line[4:].split("\t")[0]
-            for p in (old, new):
-                if p != "/dev/null":
-                    declared.add(p[2:] if p.startswith(("a/", "b/")) else p)
-            old = None
-    return declared
+def _mutation_shape_error(data, allowed_files):
+    """Per-mutation shape check: dict, exactly string file/find/replace."""
+    for i, m in enumerate(data):
+        if not isinstance(m, dict):
+            return "mutation-parse: mutation %d is not a JSON object" % i
+        missing = [k for k in ("file", "find", "replace") if k not in m]
+        if missing:
+            return "mutation-parse: mutation %d missing keys %s" % (i, missing)
+        for k in ("file", "find", "replace"):
+            if not isinstance(m[k], str):
+                return "mutation-parse: mutation %d field %r must be a string" % (i, k)
+        if not m["find"]:
+            return "mutation-parse: mutation %d has an empty find anchor" % i
+        if allowed_files is not None and m["file"] not in allowed_files:
+            return ("mutation-parse: mutation %d file %r is not in the provided checkout"
+                    % (i, m["file"]))
+    return None
 
 
 def applied_files(worktree):
-    """Files actually changed by git apply: modified/tracked + untracked (new)."""
+    """Files actually changed in the worktree (modified/tracked + untracked)."""
     r = subprocess.run(["git", "status", "--porcelain"], cwd=worktree,
                        capture_output=True, text=True)
     return {line[3:] for line in r.stdout.splitlines() if line.strip()}
 
 
-def diff_line_counts(diff_text):
-    """Our raw count of +/- body lines per file: excludes ---/+++ headers and
-    @@ lines, but counts empty +/- lines (numstat counts them too). Includes
-    lines from hunks git's apply.c parse later drops — that asymmetry is the
-    point: it detects a malformed second hunk inside a modified file.
+def _json_array_span(text):
+    """Bare-array fallback: the outermost [ ... ] span, as the old bare-diff
+    fallback did for diffs. None when the text has no array at all."""
+    a, b = text.find("["), text.rfind("]")
+    return text[a:b + 1] if a != -1 and b > a else None
+
+
+def _norm_indexed(text):
+    """Trailing-whitespace-normalized copy + index back-map.
+
+    Returns (norm, idx) where norm[i] came from original text[idx[i]] — the
+    one tolerance worth building (models drift trailing whitespace;
+    BIGGEST_ISSUE_ANALYSIS §4); nothing fuzzier.
     """
-    counts, cur = {}, None
-    for line in diff_text.split("\n"):
-        if line.startswith("diff --git"):
-            m = re.match(r'^diff --git a/(.+?) b/(.+?)$', line)
-            if m:
-                cur = m.group(2)
-            else:
-                cur = None
-        elif line.startswith("--- "):
-            continue
-        elif line.startswith("+++ "):
-            p = line[4:].split("\t")[0]
-            if p != "/dev/null":
-                cur = p[2:] if p.startswith(("a/", "b/")) else p
-        elif line.startswith("@@"):
-            continue
-        elif cur and line[:1] in ("+", "-"):
-            counts[cur] = counts.get(cur, 0) + 1
-    return counts
+    norm, idx, off = [], [], 0
+    for line in text.split("\n"):
+        s = line.rstrip()
+        norm.append(s)
+        idx.extend(range(off, off + len(s)))
+        norm.append("\n")
+        idx.append(off + len(line))
+        off += len(line) + 1
+    return "".join(norm)[:-1], idx[:-1]
 
 
-def numstat_counts(diff_text, extra):
-    """git's own parse of the same patch: added/deleted per file."""
-    fd, path = tempfile.mkstemp(suffix=".patch")
-    with os.fdopen(fd, "w") as f:
-        f.write(diff_text)
-    try:
-        r = subprocess.run(["git", "apply", "--numstat"] + extra + [path],
-                           capture_output=True, text=True)
-    finally:
-        os.unlink(path)
-    if r.returncode != 0:
-        return None
-    counts = {}
-    for line in r.stdout.splitlines():
-        add, dele, name = line.split("\t", 2)
-        # git numstat prints "-" for binary; treat as mismatch trigger (no parse)
-        counts[name] = (int(add) if add.isdigit() else 0) + (int(dele) if dele.isdigit() else 0)
-    return counts
+def apply_mutations(mutations, worktree):
+    """Mutation-apply gate (§4): each anchor must occur exactly once
+    (trailing-whitespace-normalized); 0 or >1 → loud fail naming file +
+    anchor prefix. Mutations apply in array order, each on the previous
+    result. No auto-repair — an anchor miss is a genuine model failure the
+    gate records, never fixes (L-008). Files are written only if every
+    mutation matches.
 
-
-def apply_diff(diff_text, worktree):
-    """Strict-first ladder: plain, then --recount, then --recount -C1.
-
-    The tier that applied is a measurable implementer-quality signal
-    (recount-only = sloppy hunk headers) and must not be hidden.
-
-    Post-condition: a 0 exit is not enough. git apply silently DROPS
-    sections it cannot parse while succeeding. File-level drops are caught
-    by declared==applied file-set equality; hunk-level drops WITHIN one
-    modified file are caught by line-count reconciliation — our raw +/- body
-    count per file vs git apply --numstat on the same patch (numstat is fine
-    HERE: the comparison target is git's own parse, not ground truth).
+    Returns (ok, detail, results); results is the per-mutation evidence
+    {file, anchor_count, applied, error} — every rung recorded, never only
+    the last failure (L-014's lesson carried over to this contract).
     """
-    fd, path = tempfile.mkstemp(suffix=".patch")
-    with os.fdopen(fd, "w") as f:
-        f.write(diff_text)
-    try:
-        r = None
-        tier = None
-        for tier, extra in (("plain", []), ("recount", ["--recount"]),
-                            ("recount-C1", ["--recount", "-C1"])):
-            r = subprocess.run(["git", "apply", "--whitespace=nowarn"] + extra + [path],
-                               cwd=worktree, capture_output=True, text=True)
-            if r.returncode == 0:
-                declared, actual = declared_files(diff_text), applied_files(worktree)
-                ours, gits = diff_line_counts(diff_text), numstat_counts(diff_text, extra)
-                if declared != actual:
-                    # ponytail: loud failure, no auto-repair — the model emitting
-                    # a malformed (header-less) diff section is a genuine model
-                    # failure; the gate's job is to catch it, not fix it. Upgrade
-                    # path: only if malformed-diff noise ever dominates real work.
-                    return False, ("apply_incomplete: declared %s != applied %s"
-                                   % (sorted(declared), sorted(actual))), tier
-                if gits is None or ours != gits:
-                    return False, ("apply_incomplete: line-count mismatch ours %s vs git %s"
-                                   % (ours, gits)), tier
-                return True, "applied", tier
-        return False, (r.stderr or "apply failed").strip(), tier
-    finally:
-        os.unlink(path)
+    contents, results = {}, []
+    for i, m in enumerate(mutations):
+        name = m["file"]
+        if name not in contents:
+            try:
+                with open(os.path.join(worktree, name)) as f:
+                    contents[name] = f.read()
+            except OSError as e:
+                results.append({"index": i, "file": name, "anchor_count": 0,
+                                "applied": False, "error": "unreadable: %s" % e})
+                return False, ("mutation-apply: %s: cannot read file (%s)" % (name, e)), results
+        text = contents[name]
+        hay, hay_idx = _norm_indexed(text)
+        needle, _ = _norm_indexed(m["find"])
+        count = hay.count(needle)
+        row = {"index": i, "file": name, "anchor_count": count, "applied": False}
+        results.append(row)
+        if count != 1:
+            row["error"] = ("anchor not found" if count == 0
+                            else "anchor occurs %d times" % count)
+            return False, ("mutation-apply: %s: anchor occurs %d times (expected 1), "
+                           "anchor prefix: %r" % (name, count, m["find"][:60])), results
+        start = hay.index(needle)
+        a = hay_idx[start]
+        end = start + len(needle)
+        if needle.endswith("\n") and len(needle) > 1:
+            end -= 1  # the anchor's final newline is a line boundary, not
+                      # content: keep the file's own trailing bytes of that line
+        b = hay_idx[end - 1] + 1
+        contents[name] = text[:a] + m["replace"] + text[b:]
+        row["applied"] = True
+    for name, text in contents.items():
+        with open(os.path.join(worktree, name), "w") as f:
+            f.write(text)
+    # post-condition: the mutated file set must appear in git status
+    # (L-008 declared-vs-applied discipline; git-apply exit-0's silent
+    # drop has no analogue here, but the post-condition stays).
+    actual = applied_files(worktree)
+    missing = sorted(set(contents) - actual)
+    if missing:
+        return False, ("apply_incomplete: mutated %s but git status shows %s"
+                       % (sorted(contents), sorted(actual))), results
+    return True, "applied %d mutations" % len(mutations), results
 
 
 class Lap:
@@ -352,20 +353,22 @@ def run(issue):
         lap.event("implementer-done", finish_reason=r["finish_reason"], chars=len(r["content"]))
         lap.check_clock()
 
-        diff_text = extract_diff(r["content"])
-        if not diff_text:
-            return finish(lap, "failure", gate="diff-extraction",
-                          caught="model produced no diff despite claiming to implement")
-        with open(os.path.join(lap.evdir, "claimed.diff"), "w") as f:
-            f.write(diff_text)
-        ok, detail, tier = apply_diff(diff_text, worktree)
-        lap.event("diff-apply", ok=ok, tier=tier, detail=detail[:500])
+        names = {os.path.basename(f.split("\n", 1)[0][4:-4]) for f in files}
+        mutations, parse_err = extract_mutations(r["content"], allowed_files=names)
+        if not mutations:
+            return finish(lap, "failure", gate="mutation-parse", error=parse_err,
+                          caught="model produced no mutation JSON despite claiming to implement")
+        with open(os.path.join(lap.evdir, "claimed.json"), "w") as f:
+            json.dump(mutations, f, indent=1)
+        ok, detail, mut_results = apply_mutations(mutations, worktree)
+        lap._dump("mutations.json", mut_results)
+        lap.event("mutation-apply", ok=ok, detail=detail[:500])
         if not ok:
             if detail.startswith("apply_incomplete"):
-                return finish(lap, "apply_incomplete", gate="diff-apply", error=detail,
-                              caught=detail)
-            return finish(lap, "failure", gate="diff-apply", error=detail,
-                          caught="diff did not apply to a clean checkout")
+                return finish(lap, "apply_incomplete", gate="mutation-apply", error=detail,
+                               caught=detail)
+            return finish(lap, "failure", gate="mutation-apply", error=detail,
+                          caught="anchor miss: mutations did not apply to the checkout")
         lap.check_clock()
 
         _git(["add", "-A"], worktree)
@@ -392,7 +395,6 @@ def run(issue):
                                   else "reviewer gave no parseable verdict"))
         lap.event("review-accept")
         lap.check_clock()
-
         pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
         scenarios_dir = os.path.join(os.path.dirname(__file__), "..", "scenarios")
         evidence = verify.verify_candidate(worktree, pid_file, scenarios_dir, issue=issue)
