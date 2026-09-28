@@ -75,13 +75,27 @@ def worktree_for(issue, prefix="agent"):
     path = os.path.join(repo, ".factory", "worktrees", "%s-issue-%d" % (prefix, issue))
     branch = "%s/issue-%d" % (prefix, issue)
     _git(["fetch", "origin", "main", "--prune"], repo)
-    r = subprocess.run(["git", "worktree", "add", path, "-B", branch, "origin/main"],
-                       cwd=repo, capture_output=True, text=True)
-    if r.returncode != 0 and "already exists" not in r.stderr and "already registered" not in r.stderr:
-        raise RuntimeError("worktree add failed: %s" % r.stderr.strip())
+    _worktree_add(repo, path, branch)
     _git(["reset", "--hard", "origin/main"], path)
     _git(["clean", "-fdx"], path)
     return path
+
+
+def _worktree_add(repo, path, branch, _retry=True):
+    """worktree add, self-healing a registered-path collision (L-016):
+    a crashed/killed lap can leave its worktree registered; unattended runs
+    cannot depend on operator cleanup between launches. Only the collision
+    signature heals; anything else fails loud as before."""
+    r = subprocess.run(["git", "worktree", "add", path, "-B", branch, "origin/main"],
+                       cwd=repo, capture_output=True, text=True)
+    if r.returncode != 0 and "already exists" not in r.stderr and "already registered" not in r.stderr:
+        if _retry and "is already used by worktree at" in r.stderr:
+            subprocess.run(["git", "worktree", "remove", "--force", path],
+                           cwd=repo, capture_output=True)
+            subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True)
+            return _worktree_add(repo, path, branch, _retry=False)
+        raise RuntimeError("worktree add failed: %s" % r.stderr.strip())
+    return r
 
 
 def issue_data(issue):
