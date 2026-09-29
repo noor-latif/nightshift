@@ -65,10 +65,11 @@ def runtime_log(event, path=None, **fields):
         list on every lap-check row for 3 consecutive laps is the mechanical
         S1 zero-touch proof. Absence of the file, or a missing lap-check per
         lap, means UNMEASURED, never "no interventions".
-      intervention — reconcile observed an artifact inconsistent with the
-        recorded outcomes (orphan claim reaped, pid mismatch, retry-counter
-        drift); a manual state edit is an intervention under the written S1
-        text, and this row is its in-run record.
+      intervention — reconcile reaped a claim-lifecycle artifact (orphan
+        claim); a manual state edit is an intervention under the written S1
+        text. Detector coverage: the orphan-claim reap class only — no
+        pid-mismatch or retry-counter-drift detector is implemented
+        (noted 2026-09-29).
       red-recheck — dispatch-time RED re-check verdict (issue, verdict).
     """
     path = path or RUNTIME_LOG_PATH
