@@ -494,6 +494,41 @@ class TestReconcileDeadClaims(unittest.TestCase):
         self.assertNotIn("17", state["issues"])  # no retries burned
         self.assertTrue(os.path.exists(os.path.join(self.claims, "issue-17.json")))
 
+    def test_idle_reconcile_claim_open_issue_is_blocked_not_drained(self):
+        import selector
+
+        gh = os.path.join(self.tmp, "gh")
+        with open(gh, "w") as f:
+            f.write("#!%s\n" % sys.executable)
+            f.write(
+                "import sys, json\n"
+                "if sys.argv[1:3] == ['issue', 'list']:\n"
+                "    print(json.dumps([{'number': 18, 'createdAt': '2026-01-01T00:00:00Z'}]))\n"
+                "else:\n"
+                "    print('[]')\n"
+            )
+        os.chmod(gh, 0o755)
+        claim = selector.claim_next("r/x", self.claims, now=1000.0, gh=gh)
+        self.assertEqual(claim["issue"], 18)
+
+        state = {"issues": {}, "lap": None, "started_at": None}
+        deps = {
+            "state_path": os.path.join(self.tmp, "state.json"),
+            "notify": lambda text: None,
+            "claim": lambda now: selector.claim_next("r/x", self.claims,
+                                                       now=now, gh=gh),
+            "reconcile": lambda now: supervisor.reconcile_dead_claims(
+                now, state, self.claims, result_path=self.result),
+            "break_claim": lambda path, now: os.remove(path),
+            "reconcile_observations": [],
+        }
+        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
+            events = supervisor.tick(state, 1000.0, deps)
+
+        self.assertIn("dispatch:idle", events)
+        self.assertIn("BLOCKED:18", events)
+        self.assertFalse(any(e.startswith("DRAIN") for e in events))
+
     def test_other_issue_orphan_still_counted_while_lap_live(self):
         # the exclusion is only for the live issue; a true orphan for a
         # different issue is still a counted crash

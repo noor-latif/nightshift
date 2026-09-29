@@ -243,6 +243,7 @@ def tick(state, now, deps):
     """One supervisor tick: health-check → reconcile → dispatch → tail."""
     events = []
     lap = state.get("lap")
+    dispatch_idle = False
 
     if lap:
         if lap_healthy(lap, now):
@@ -267,16 +268,9 @@ def tick(state, now, deps):
         d = dispatch(state, now, deps)
         if d not in ("already-running",):
             events.append("dispatch:" + d)
-            if d == "idle":
-                issues = state.get("issues", {})
-                blocked = [int(n) for n, r in issues.items()
-                           if r.get("disposition") not in ("parked", "timeout-park", "merged")]
-                parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
-                merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
-                if blocked:
-                    events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
-                else:
-                    events.append("DRAIN:%d parked, %d merged" % (parked, merged))
+        # Reconcile can turn an apparent idle queue into a retryable issue.
+        # Defer DRAIN/BLOCKED classification until after reconciliation.
+        dispatch_idle = d == "idle"
 
     # reconcile: reap claims for issues with no live lap (supervisor restart)
     observations = deps.get("reconcile_observations") or []
@@ -287,6 +281,18 @@ def tick(state, now, deps):
             note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
             observations.append(note)
             runtime_log("intervention", detail=note, claim=path)
+
+    if dispatch_idle:
+        issues = state.get("issues", {})
+        blocked = [int(n) for n, r in issues.items()
+                   if r.get("disposition") not in ("parked", "timeout-park", "merged")]
+        parked = sum(1 for r in issues.values()
+                     if r.get("disposition") in ("parked", "timeout-park"))
+        merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
+        if blocked:
+            events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
+        else:
+            events.append("DRAIN:%d parked, %d merged" % (parked, merged))
     save_state(state, deps["state_path"])
     return events
 
