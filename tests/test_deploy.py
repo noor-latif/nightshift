@@ -1,11 +1,13 @@
 import sys
 import os
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from deploy import build_deploy_script  # noqa: E402
 from merge import trees_equal  # noqa: E402
+import selector  # noqa: E402
 
 
 class TestDeployScript(unittest.TestCase):
@@ -34,6 +36,30 @@ class TestDeployScript(unittest.TestCase):
         self.assertIn("curl -sf http://127.0.0.1:8899/health", self.script)
         self.assertIn("NOT READY", self.script)
         self.assertIn("exit 1", self.script)
+
+
+class TestSelectorMergedDisposition(unittest.TestCase):
+    def test_claim_next_skips_merged_issue(self):
+        with tempfile.TemporaryDirectory() as td:
+            gh = os.path.join(td, "gh")
+            with open(gh, "w") as f:
+                f.write("#!%s\n" % sys.executable)
+                f.write(
+                    "import sys\n"
+                    "if sys.argv[1:3] == ['issue', 'list']:\n"
+                    "    print('[{\"number\": 18, \"createdAt\": \"2026-01-01T00:00:00Z\"}]')\n"
+                    "else:\n"
+                    "    print('[]')\n"
+                )
+            os.chmod(gh, 0o755)
+            got = selector.claim_next(
+                "r/x",
+                issues_dir=os.path.join(td, "claims"),
+                now=1000.0,
+                gh=gh,
+                dispositions={"18": {"retries": 0, "disposition": "merged"}},
+            )
+            self.assertIsNone(got)
 
 
 if __name__ == "__main__":
