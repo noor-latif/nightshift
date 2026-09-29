@@ -33,6 +33,7 @@ import verify
 from settings import (
     CHECKOUT_CHAR_BUDGET,
     CODE_PATHS,
+    DEPLOY_MODE,
     EVIDENCE_DIR,
     GITHUB_REPO,
     HEARTBEAT_PATH,
@@ -378,13 +379,12 @@ def run(issue):
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
                        max_tokens=IMPLEMENTER_MAX_TOKENS,
                        reasoning_effort=IMPLEMENTER_REASONING_EFFORT)
-        names = {f.split("\n", 1)[0][4:-4] for f in files}
+        lap.add_cost(r["usage"], "implementer")
         with open(os.path.join(lap.evdir, "implementer_raw.txt"), "w") as f:
             f.write(r["content"])
         lap.event("implementer-done", finish_reason=r["finish_reason"], chars=len(r["content"]))
         lap.check_clock()
-
-        names = {os.path.basename(f.split("\n", 1)[0][4:-4]) for f in files}
+        names = {f.split("\n", 1)[0][4:-4] for f in files}
         mutations, parse_err = extract_mutations(r["content"], allowed_files=names)
         if not mutations:
             return finish(lap, "failure", gate="mutation-parse", error=parse_err,
@@ -450,24 +450,30 @@ def run(issue):
 
         # deploy: the supervisor runs on nixlab itself, so the deploy script
         # runs directly here — no ssh hop. Kill ONLY by the documented PID file.
-        script = deploy.build_deploy_script(port=LIVE_PORT,
-                                            product_repo=os.path.expanduser(PRODUCT_REPO),
-                                            pid_file=LIVE_PID_FILE)
-        fd, spath = tempfile.mkstemp(suffix=".sh")
-        with os.fdopen(fd, "w") as f:
-            f.write(script)
-        try:
-            d = subprocess.run(["bash", spath], capture_output=True, text=True, timeout=120)
-        finally:
-            os.unlink(spath)
-        lap.event("deploy", rc=d.returncode, tail=(d.stdout + d.stderr)[-300:])
-        if d.returncode != 0:
-            return finish(lap, "failure", gate="deploy", error=(d.stdout + d.stderr)[-2000:])
-        ident = deploy.identity_readback("http://127.0.0.1:%d" % LIVE_PORT,
-                                         os.path.expanduser(PRODUCT_REPO))
-        lap._dump("identity.json", ident)
-        if not ident["match"]:
-            return finish(lap, "failure", gate="deploy-identity", error=ident)
+        # DEPLOY_MODE="none" (library repos) has nothing to deploy and no
+        # live rig to compare identity against — skip both, loudly in the
+        # event log.
+        if DEPLOY_MODE == "none":
+            lap.event("deploy-skip", mode=DEPLOY_MODE)
+        else:
+            script = deploy.build_deploy_script(port=LIVE_PORT,
+                                                product_repo=os.path.expanduser(PRODUCT_REPO),
+                                                pid_file=LIVE_PID_FILE)
+            fd, spath = tempfile.mkstemp(suffix=".sh")
+            with os.fdopen(fd, "w") as f:
+                f.write(script)
+            try:
+                d = subprocess.run(["bash", spath], capture_output=True, text=True, timeout=120)
+            finally:
+                os.unlink(spath)
+            lap.event("deploy", rc=d.returncode, tail=(d.stdout + d.stderr)[-300:])
+            if d.returncode != 0:
+                return finish(lap, "failure", gate="deploy", error=(d.stdout + d.stderr)[-2000:])
+            ident = deploy.identity_readback("http://127.0.0.1:%d" % LIVE_PORT,
+                                             os.path.expanduser(PRODUCT_REPO))
+            lap._dump("identity.json", ident)
+            if not ident["match"]:
+                return finish(lap, "failure", gate="deploy-identity", error=ident)
         _gh(["issue", "close", str(issue), "--comment",
              "Merged and deployed by nightshift lap %s (PR: %s)" % (lap.run_id, m.get("pr"))])
         lap.event("issue-closed")

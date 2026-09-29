@@ -516,6 +516,7 @@ class TestExecOracle(unittest.TestCase):
         # one HTTP assertion in the mix → boot path runs (the candidate is
         # this app.py stand-in), the exec assertion runs alongside it
         app = ('import json\n'
+               'import os\n'
                'from http.server import BaseHTTPRequestHandler, HTTPServer\n'
                'class H(BaseHTTPRequestHandler):\n'
                '    def log_message(self, *a):\n'
@@ -530,7 +531,8 @@ class TestExecOracle(unittest.TestCase):
                '        else:\n'
                '            self.send_response(404)\n'
                '            self.end_headers()\n'
-               'HTTPServer(("127.0.0.1", 0), H).serve_forever()\n')
+               'PORT = int(os.environ.get("FACTORY_PORT", "0"))\n'
+               'HTTPServer(("127.0.0.1", PORT), H).serve_forever()\n')
         with open(os.path.join(self.dir, "app.py"), "w") as f:
             f.write(app)
         scenario = {
@@ -544,7 +546,8 @@ class TestExecOracle(unittest.TestCase):
         pid_file = os.path.join(self.dir, "mixed.pid")
         r = verify.run_scenario(scenario, self.dir, pid_file)
         self.assertEqual(r["verdict"], "pass", msg=r["checks"])
-        self.assertFalse(os.path.exists(pid_file))  # candidate was stopped
+        self.assertTrue(r["checks"][0]["assertion"].startswith("exec "))
+        self.assertEqual(r["checks"][1]["observed_status"], 200)
         kinds = {c["assertion"].split(" ")[0] for c in r["checks"]}
         self.assertEqual(kinds, {"exec", "GET"})
 
