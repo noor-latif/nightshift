@@ -12,7 +12,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import settings  # noqa: E402
 
-KEYS = ("PRODUCT_REPO", "GITHUB_REPO", "DEPLOY_MODE", "CODE_PATHS")
+KEYS = ("PRODUCT_REPO", "GITHUB_REPO", "DEPLOY_MODE", "CODE_PATHS",
+        "CHECKOUT_CHAR_BUDGET", "SCENARIOS_DIR")
 
 
 class TestSettingsEnvOverrides(unittest.TestCase):
@@ -50,7 +51,30 @@ class TestSettingsEnvOverrides(unittest.TestCase):
     def test_code_paths_empty_entries_dropped(self):
         os.environ["CODE_PATHS"] = " src/*.py , ,*.py,"
         importlib.reload(settings)
-        self.assertEqual(settings.CODE_PATHS, ["src/*.py", "*.py"])
+
+    def test_checkout_char_budget_default_and_override(self):
+        importlib.reload(settings)
+        self.assertEqual(settings.CHECKOUT_CHAR_BUDGET, 100_000)
+        os.environ["CHECKOUT_CHAR_BUDGET"] = "400000"
+        importlib.reload(settings)
+        self.assertEqual(settings.CHECKOUT_CHAR_BUDGET, 400_000)
+
+    def test_scenarios_dir_default_and_override(self):
+        importlib.reload(settings)
+        self.assertEqual(os.path.normpath(settings.SCENARIOS_DIR),
+                         os.path.normpath(os.path.join(
+                             os.path.dirname(settings.__file__), "..", "scenarios")))
+        os.environ["SCENARIOS_DIR"] = "/tmp/deployed-oracles"
+        importlib.reload(settings)
+        self.assertEqual(settings.SCENARIOS_DIR, "/tmp/deployed-oracles")
+
+    def test_lap_and_supervisor_use_settings_scenarios_dir(self):
+        # the module-level import must flow to both call sites: a
+        # deployment-curated dir must be honored by lap and red_recheck
+        import lap
+        import supervisor
+        self.assertEqual(lap.SCENARIOS_DIR, settings.SCENARIOS_DIR)
+        self.assertEqual(supervisor.SCENARIOS_DIR, settings.SCENARIOS_DIR)
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ from settings import (
     IMPLEMENTER_REASONING_EFFORT,
     LAP_WALLCLOCK_LIMIT_S,
     MIN_MAX_TOKENS,
+    SCENARIOS_DIR,
     PRODUCT_REPO,
     REVIEWER_MODEL,
 )
@@ -429,8 +430,7 @@ def run(issue):
         lap.event("review-accept")
         lap.check_clock()
         pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
-        scenarios_dir = os.path.join(os.path.dirname(__file__), "..", "scenarios")
-        evidence = verify.verify_candidate(worktree, pid_file, scenarios_dir, issue=issue)
+        evidence = verify.verify_candidate(worktree, pid_file, SCENARIOS_DIR, issue=issue)
         lap._dump("verify.json", evidence)
         if evidence["verdict"] != "pass":
             return finish(lap, "failure", gate="verify", error=evidence)

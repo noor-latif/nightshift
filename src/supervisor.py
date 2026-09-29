@@ -20,6 +20,7 @@ from settings import (
     LAP_WALLCLOCK_LIMIT_S,
     NTFY_URL,
     SESSION_WALLCLOCK_LIMIT_S,
+    SCENARIOS_DIR,
     STATE_DIR,
 )
 
@@ -409,8 +410,7 @@ def main():
         worktree = lapmod.worktree_for(issue, prefix="recheck")
         try:
             pid_file = os.path.join("/tmp", "factory-recheck-%d.pid" % issue)
-            scenarios_dir = os.path.join(os.path.dirname(__file__), "..", "scenarios")
-            evidence = verify.verify_candidate(worktree, pid_file, scenarios_dir, issue=issue)
+            evidence = verify.verify_candidate(worktree, pid_file, SCENARIOS_DIR, issue=issue)
             return evidence.get("verdict")
         except Exception:
             return None  # recheck itself failed → treat as RED, spend the lap

@@ -39,6 +39,9 @@ EVIDENCE_DIR = "state/evidence"
 SCENARIO_PORT_RANGE = (8900, 8910)  # scenario candidate boots pick ports from here
 FACTORY_PORT = 8899  # deployed app port on nixlab
 READY_TIMEOUT_S = 30  # deploy readiness bound
-CHECKOUT_CHAR_BUDGET = 100_000  # implementer prompt cap: root *.py files, sorted, whole files
+CHECKOUT_CHAR_BUDGET = int(os.environ.get("CHECKOUT_CHAR_BUDGET", 100_000))  # implementer prompt cap; env-overridable for larger multi-glob views
+SCENARIOS_DIR = os.environ.get(
+    "SCENARIOS_DIR",
+    os.path.join(os.path.dirname(__file__), "..", "scenarios"))  # deployment-curated dir (self-run: issue-1..6 only)
 PROVIDER_PINS = {"deepseek-v4.1-flash": "openrouter"}  # trusted provider; untrusted quant resellers leak DSML markup (see L-005). 404 no_sellers_for_model = fail loud, correct.
 PROVENANCE_ENV = "FACTORY_RUNTIME_CANDIDATE"  # must be unset; leak = refuse
