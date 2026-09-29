@@ -1,0 +1,25 @@
+{
+ "name": "claim-next-merged-skip",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import os, sys, tempfile\nsys.path.insert(0, 'src')\nimport selector\nimport os, tempfile\ntmp = tempfile.mkdtemp()\ngh = os.path.join(tmp, 'fakegh')\nopen(gh, 'w').write('#!/bin/sh\\nif [ \"$1\" = \"issue\" ]; then echo \\'[{\"number\": 18, \"createdAt\": \"2026-01-01T00:00:00Z\"}]\\'; else echo \"[]\"; fi\\n')\nos.chmod(gh, 0o755)\ndef probe(disp):\n    d = tempfile.mkdtemp()\n    return selector.claim_next('r/x', issues_dir=d, now=1000.0, gh=gh, dispositions=disp)\nassert probe({'18': {'retries': 0, 'disposition': 'merged'}}) is None\nassert probe({'18': {'retries': 0, 'disposition': 'parked'}}) is None\nassert probe({'18': {'retries': 0, 'disposition': 'timeout-park'}}) is None\nprint('K1-RED-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K1-RED-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import os, sys, tempfile\nsys.path.insert(0, 'src')\nimport selector\nimport os, tempfile\ntmp = tempfile.mkdtemp()\ngh = os.path.join(tmp, 'fakegh')\nopen(gh, 'w').write('#!/bin/sh\\nif [ \"$1\" = \"issue\" ]; then echo \\'[{\"number\": 18, \"createdAt\": \"2026-01-01T00:00:00Z\"}]\\'; else echo \"[]\"; fi\\n')\nos.chmod(gh, 0o755)\ndef probe(disp):\n    d = tempfile.mkdtemp()\n    return selector.claim_next('r/x', issues_dir=d, now=1000.0, gh=gh, dispositions=disp)\nc = probe({})\nassert c is not None and c['issue'] == 18, c\nc = probe({'18': {'retries': 1, 'disposition': 'retry'}})\nassert c is not None and c['issue'] == 18, c\nprint('K1-C3-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K1-C3-GREEN"
+  }
+ ]
+}

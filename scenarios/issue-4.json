@@ -1,0 +1,35 @@
+{
+ "name": "verify-hold-captured",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import json, os, socket, subprocess, sys, tempfile\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\ntmp = tempfile.mkdtemp()\nopen(os.path.join(tmp, 'a_test.py'), 'w').write('import unittest\\nclass T(unittest.TestCase):\\n    def test_x(self): pass\\n')\nfor a in (['git', 'init', '-q'], ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init', '--allow-empty']):\n    subprocess.run(a, cwd=tmp, capture_output=True)\nsd = tempfile.mkdtemp()\nwith open(os.path.join(sd, 'global.json'), 'w') as f:\n    json.dump({'name': 'boot', 'assertions': [{'method': 'GET', 'url': 'http://127.0.0.1:{{port}}/health', 'expected_status': 200}]}, f)\nsocks = []\nfor p in range(8900, 8912):\n    s = socket.socket()\n    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n    s.bind(('127.0.0.1', p))\n    s.listen(1)\n    socks.append(s)\ntry:\n    ev = verify.verify_candidate(tmp, '/tmp/probe-hold.pid', sd, issue=None)\nexcept Exception as e:\n    print('ESCAPES verify_candidate as:', type(e).__name__, e)\n    raise SystemExit(1)\nassert isinstance(ev, dict) and ev.get('verdict') == 'HOLD', ev\nprint('K4-RED-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K4-RED-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import os, sys\nos.environ['FACTORY_RUNTIME_CANDIDATE'] = 'x'\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\nsc = {'name': 'leak', 'assertions': [{'method': 'GET', 'url': 'http://127.0.0.1:{{port}}/health', 'expected_status': 200}]}\nr = verify.run_scenario(sc, os.getcwd(), '/tmp/unused.pid')\nassert r['verdict'] == 'hold', r\nprint('K4-C2-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K4-C2-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import json, os, subprocess, sys, tempfile\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\ntmp = tempfile.mkdtemp()\nopen(os.path.join(tmp, 'a_test.py'), 'w').write('import unittest\\nclass T(unittest.TestCase):\\n    def test_x(self): assert 0\\n')\nfor a in (['git', 'init', '-q'], ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init', '--allow-empty']):\n    subprocess.run(a, cwd=tmp, capture_output=True)\nsd = tempfile.mkdtemp()\nev = verify.verify_candidate(tmp, '/tmp/probe-fail.pid', sd, issue=None)\nassert ev['verdict'] == 'fail', ev['verdict']\nprint('K4-C3-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K4-C3-GREEN"
+  }
+ ]
+}

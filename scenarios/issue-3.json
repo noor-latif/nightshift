@@ -1,0 +1,39 @@
+{
+ "name": "apply-mutations-newline-anchor",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import os, subprocess, sys, tempfile\nsys.path.insert(0, 'src')\nimport lap\nwt = tempfile.mkdtemp()\nsubprocess.run(['git', 'init', '-q'], cwd=wt, capture_output=True)\nopen(os.path.join(wt, 'app.py'), 'w').write('A\\nB\\nC\\n')\nok, d, _ = lap.apply_mutations([{'file': 'app.py', 'find': 'A\\nB\\n', 'replace': 'X\\n'}], wt)\nout = open(os.path.join(wt, 'app.py')).read()\nassert out == 'X\\nC\\n', out\nprint('K3-RED-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K3-RED-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import os, subprocess, sys, tempfile\nsys.path.insert(0, 'src')\nimport lap\nwt = tempfile.mkdtemp()\nsubprocess.run(['git', 'init', '-q'], cwd=wt, capture_output=True)\nopen(os.path.join(wt, 'app.py'), 'w').write('A\\nB\\n')\nok, d, _ = lap.apply_mutations([{'file': 'app.py', 'find': 'A\\nB\\n', 'replace': 'X\\nY\\n'}], wt)\nout = open(os.path.join(wt, 'app.py')).read()\nassert out == 'X\\nY\\n', out\nprint('K3-C2-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K3-C2-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "tests",
+    "-p",
+    "test_lap_mutations.py"
+   ],
+   "expected_exit": 0
+  }
+ ]
+}
