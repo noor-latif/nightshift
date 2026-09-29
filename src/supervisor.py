@@ -290,6 +290,31 @@ def tick(state, now, deps):
     save_state(state, deps["state_path"])
     return events
 
+
+def red_recheck(issue):
+    """L-013: re-run the issue's scenario against fresh origin/main
+    BEFORE spending a lap. 'pass' = main already satisfies it (the
+    issue is vacated — a lap would be a refactor lap, not work).
+    Anything else (fail/hold/crash) = still RED → dispatch.
+
+    Module level (was a main() closure) so the SCENARIOS_DIR wiring is
+    the real, directly-testable code path: a deployment-curated oracle
+    dir must flow to the recheck exactly as to the lap's verify call.
+    """
+    import lap as lapmod
+    import verify
+
+    worktree = lapmod.worktree_for(issue, prefix="recheck")
+    try:
+        pid_file = os.path.join("/tmp", "factory-recheck-%d.pid" % issue)
+        evidence = verify.verify_candidate(worktree, pid_file, SCENARIOS_DIR, issue=issue)
+        return evidence.get("verdict")
+    except Exception:
+        return None  # recheck itself failed → treat as RED, spend the lap
+    finally:
+        subprocess.run(["git", "worktree", "remove", "--force", worktree],
+                       cwd=os.path.expanduser(lapmod.PRODUCT_REPO), capture_output=True)
+
 def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
     """L-009 + crash-retry accounting: claim files no live lap owns.
 
@@ -397,26 +422,6 @@ def main():
     def reconcile_claims(now):
         return reconcile_dead_claims(now, box.get("state") or {},
                                      os.path.join(STATE_DIR, "claims"))
-
-    def red_recheck(issue):
-        """L-013: re-run the issue's scenario against fresh origin/main
-        BEFORE spending a lap. 'pass' = main already satisfies it (the
-        issue is vacated — a lap would be a refactor lap, not work).
-        Anything else (fail/hold/crash) = still RED → dispatch.
-        """
-        import lap as lapmod
-        import verify
-
-        worktree = lapmod.worktree_for(issue, prefix="recheck")
-        try:
-            pid_file = os.path.join("/tmp", "factory-recheck-%d.pid" % issue)
-            evidence = verify.verify_candidate(worktree, pid_file, SCENARIOS_DIR, issue=issue)
-            return evidence.get("verdict")
-        except Exception:
-            return None  # recheck itself failed → treat as RED, spend the lap
-        finally:
-            subprocess.run(["git", "worktree", "remove", "--force", worktree],
-                           cwd=os.path.expanduser(lapmod.PRODUCT_REPO), capture_output=True)
 
     deps = {
         "state_path": state_path,

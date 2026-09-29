@@ -143,6 +143,89 @@ class TestDeployModeApp(unittest.TestCase):
         with open(os.path.join(env.base, "lap-result.json")) as f:
             self.assertEqual(json.load(f)["outcome"], "success")
 
+class TestScenariosDirWiring(unittest.TestCase):
+    """Behavioral proof (launch-2 lesson): SCENARIOS_DIR must flow through
+    the REAL call paths — lap.run's verify_candidate call and supervisor's
+    red_recheck — not merely exist in settings. A dir listing or a settings
+    reload is not proof; the recorded argument is."""
+
+    def test_lap_run_passes_env_scenarios_dir_to_verify(self):
+        curated = tempfile.mkdtemp(prefix="curated-oracles-")
+        with FakeLapEnv("none"):
+            with unittest.mock.patch.object(lap, "SCENARIOS_DIR", curated):
+                seen = {}
+
+                def recorder(cwd, pid_file, scenarios_dir, issue=None):
+                    seen["dir"] = scenarios_dir
+                    return {"verdict": "pass"}
+
+                with unittest.mock.patch.object(lap.verify, "verify_candidate",
+                                                side_effect=recorder):
+                    lap.run(FakeLapEnv.ISSUE)
+        self.assertEqual(seen["dir"], curated)
+
+    def test_lap_run_default_scenarios_dir_without_env(self):
+        # env unset → the historical relative default (the module attr,
+        # resolved at import from settings' env read)
+        import settings
+        expected = os.path.normpath(settings.SCENARIOS_DIR)
+        with FakeLapEnv("none"):
+            seen = {}
+
+            def recorder(cwd, pid_file, scenarios_dir, issue=None):
+                seen["dir"] = scenarios_dir
+                return {"verdict": "pass"}
+
+            with unittest.mock.patch.object(lap.verify, "verify_candidate",
+                                            side_effect=recorder):
+                lap.run(FakeLapEnv.ISSUE)
+        self.assertEqual(os.path.normpath(seen["dir"]), expected)
+
+    def test_supervisor_red_recheck_passes_env_scenarios_dir(self):
+        import supervisor
+        curated = tempfile.mkdtemp(prefix="curated-oracles-")
+        wt = tempfile.mkdtemp(prefix="recheck-wt-")
+        seen = {}
+
+        def recorder(cwd, pid_file, scenarios_dir, issue=None):
+            seen["dir"] = scenarios_dir
+            seen["issue"] = issue
+            return {"verdict": "fail"}
+
+        with unittest.mock.patch.object(supervisor, "SCENARIOS_DIR", curated), \
+             _patch_lap_worktree(wt), \
+             _patch_verify_recorder(recorder):
+            verdict = supervisor.red_recheck(3)
+        self.assertEqual(seen["dir"], curated)
+        self.assertEqual(seen["issue"], 3)
+        self.assertEqual(verdict, "fail")
+
+    def test_supervisor_red_recheck_default_dir(self):
+        import supervisor
+        import settings
+        wt = tempfile.mkdtemp(prefix="recheck-wt-")
+        seen = {}
+
+        def recorder(cwd, pid_file, scenarios_dir, issue=None):
+            seen["dir"] = scenarios_dir
+            return {"verdict": "fail"}
+
+        with _patch_lap_worktree(wt), _patch_verify_recorder(recorder):
+            supervisor.red_recheck(4)
+        self.assertEqual(os.path.normpath(seen["dir"]),
+                         os.path.normpath(settings.SCENARIOS_DIR))
+
+
+def _patch_lap_worktree(wt):
+    import lap as lapmod
+    return unittest.mock.patch.object(lapmod, "worktree_for",
+                                     lambda issue, prefix="recheck": wt)
+
+
+def _patch_verify_recorder(recorder):
+    import verify
+    return unittest.mock.patch.object(verify, "verify_candidate",
+                                     side_effect=recorder)
 
 if __name__ == "__main__":
     unittest.main()
