@@ -267,9 +267,11 @@ def apply_mutations(mutations, worktree):
         start = hay.index(needle)
         a = hay_idx[start]
         end = start + len(needle)
-        if needle.endswith("\n") and len(needle) > 1:
-            end -= 1  # the anchor's final newline is a line boundary, not
-                      # content: keep the file's own trailing bytes of that line
+        if (needle.endswith("\n") and len(needle) > 1
+                and hay_idx[end - 1] != hay_idx[end - 2] + 1):
+            # Preserve source bytes normalized away before the final newline
+            # (for example trailing whitespace or a CR in a CRLF line).
+            end -= 1
         b = hay_idx[end - 1] + 1
         contents[name] = text[:a] + m["replace"] + text[b:]
         row["applied"] = True
