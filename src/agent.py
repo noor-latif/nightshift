@@ -51,8 +51,12 @@ def parse_stream(raw):
         payload = line[len("data:"):].strip()
         if not payload or payload == "[DONE]":
             continue
-        chunk = json.loads(payload)
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise TransientError("Malformed SSE data: %s" % e) from e
         if chunk.get("usage"):
+
             usage = chunk["usage"]
         for choice in chunk.get("choices", []):
             if choice.get("finish_reason"):

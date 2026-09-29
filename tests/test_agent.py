@@ -63,6 +63,16 @@ class TestParseStream(unittest.TestCase):
         with self.assertRaises(TransientError):
             parse_stream(load("sse_truncated.txt"))
 
+    def test_malformed_data_line_is_transient(self):
+        raw = (
+            b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+            b'data: NOT-JSON {\n\n'
+            b'data: {"choices":[{"finish_reason":"stop"}]}\n\n'
+        )
+        with self.assertRaises(TransientError):
+            parse_stream(raw)
+
+
 
 class TestChat(unittest.TestCase):
     def test_incomplete_read_retried_then_succeeds(self):
@@ -89,7 +99,16 @@ class TestChat(unittest.TestCase):
         self.assertEqual(cut.calls, 1)
         self.assertEqual(len(op.calls), 2)
 
+    def test_malformed_data_retried_then_succeeds(self):
+        malformed = b'data: NOT-JSON {\n\n'
+        op = FakeOpener([FakeResp(malformed), FakeResp(load("sse_stream.txt"))])
+        got = chat([{"role": "user", "content": "x"}], "m",
+                   api_key="k", opener=op)
+        self.assertEqual(got["content"], "OK")
+        self.assertEqual(len(op.calls), 2)
+
     def test_key_in_header_not_in_url_or_error(self):
+
         op = FakeOpener([FakeResp(load("sse_stream.txt"))])
         chat([{"role": "user", "content": "hi"}], "m", api_key="sekrit", opener=op)
         self.assertNotIn("sekrit", op.calls[0].full_url)
