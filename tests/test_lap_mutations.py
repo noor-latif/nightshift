@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -198,6 +199,89 @@ class TestCheckoutFiles(unittest.TestCase):
         self.assertEqual(len(got), 1)
         self.assertIn("a.py", got[0])
         self.assertNotIn("b.py", got[0])
+
+class TestCheckoutFilesCodePaths(unittest.TestCase):
+    """CODE_PATHS globs replace the hardcoded root *.py view; default stays
+    byte-identical. A path appearing in two globs appears once."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self._p = unittest.mock.patch.object(lap, "CODE_PATHS", ["*.py"])
+        self._p.start()
+        self.addCleanup(self._p.stop)
+
+    def write(self, name, content):
+        p = os.path.join(self.dir, name)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write(content)
+    def test_default_matches_root_py_byte_identical(self):
+        self.write("a.py", "x = 1\n")
+        self.write("b.py", "y = 2\n")
+        self.write("notes.txt", "t\n")
+        os.makedirs(os.path.join(self.dir, "sub"))
+        self.write("sub/c.py", "z = 3\n")  # not root: excluded by default
+        self.assertEqual("\n".join(lap.checkout_files(self.dir)),
+                         "=== a.py ===\nx = 1\n\n=== b.py ===\ny = 2\n")
+
+    def test_subdir_glob_selects_nested_files(self):
+        self.write("src/lap.py", "x = 1\n")
+        self.write("src/verify.py", "y = 2\n")
+        self.write("app.py", "root\n")
+        self._p.stop()
+        self._p2 = unittest.mock.patch.object(lap, "CODE_PATHS", ["src/*.py"])
+        self._p2.start()
+        self.addCleanup(self._p2.stop)
+        got = lap.checkout_files(self.dir)
+        self.assertEqual(len(got), 2)
+        self.assertIn("=== src/lap.py ===", got[0])
+        self.assertIn("=== src/verify.py ===", got[1])
+        self.assertNotIn("app.py", "".join(got))
+
+    def test_overlapping_globs_dedup(self):
+        self.write("a.py", "x = 1\n")
+        self._p.stop()
+        self._p2 = unittest.mock.patch.object(lap, "CODE_PATHS", ["*.py", "a.py", "**/*.py"])
+        self._p2.start()
+        self.addCleanup(self._p2.stop)
+        got = lap.checkout_files(self.dir)
+        self.assertEqual(len(got), 1)
+        self.assertIn("=== a.py ===", got[0])
+
+    def test_char_budget_still_bounds_multi_glob_checkout(self):
+        self.write("src/a.py", "x" * 600)
+        self.write("src/b.py", "y" * 600)
+        self.write("src/c.py", "z" * 600)
+        self._p.stop()
+        self._p2 = unittest.mock.patch.object(lap, "CODE_PATHS", ["src/*.py"])
+        self._p2.start()
+        self.addCleanup(self._p2.stop)
+        got = lap.checkout_files(self.dir, char_budget=1000)
+        self.assertEqual(len(got), 1)
+        self.assertIn("src/a.py", got[0])
+
+    def test_header_keeps_relative_path_for_subdirs(self):
+        # run() derives mutation allowed_files from the block header; the
+        # header must stay the worktree-relative path, not the basename
+        self.write("src/lap.py", "x = 1\n")
+        self._p.stop()
+        self._p2 = unittest.mock.patch.object(lap, "CODE_PATHS", ["src/*.py"])
+        self._p2.start()
+        self.addCleanup(self._p2.stop)
+        self.assertTrue(lap.checkout_files(self.dir)[0].startswith("=== src/lap.py ==="))
+
+    def test_dotdir_still_excluded_under_wildcard_glob(self):
+        self.write("src/a.py", "ok\n")
+        os.makedirs(os.path.join(self.dir, ".factory"))
+        with open(os.path.join(self.dir, ".factory", "leak.py"), "w") as f:
+            f.write("secret\n")
+        self._p.stop()
+        self._p2 = unittest.mock.patch.object(lap, "CODE_PATHS", ["**/*.py"])
+        self._p2.start()
+        self.addCleanup(self._p2.stop)
+        got = lap.checkout_files(self.dir)
+        self.assertEqual(len(got), 1)
+        self.assertNotIn("secret", "".join(got))
 
 if __name__ == "__main__":
     unittest.main()

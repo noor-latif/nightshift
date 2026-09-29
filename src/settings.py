@@ -12,6 +12,7 @@ DEPLOY_MODE = os.environ.get("DEPLOY_MODE", "app")
 # Implementer checkout globs (relative to the worktree root), comma-separated
 # in env. Default = exactly the historical root *.py view.
 CODE_PATHS = [p.strip() for p in os.environ.get("CODE_PATHS", "*.py").split(",") if p.strip()]
+SURPLUS_BASE_URL = "https://api.surplusintelligence.ai"
 SURPLUS_CHAT_PATH = "/v1/chat/completions"
 SURPLUS_API_KEY_ENV = "SURPLUS_INTELLIGENCE_API_KEY"  # key never hardcoded, never printed
 MIN_MAX_TOKENS = 512  # reasoning models eat budget; below this content can come back null

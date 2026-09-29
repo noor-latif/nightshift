@@ -14,6 +14,7 @@ Liveness: heartbeat touched every 10s; wall-clock breach past the budget
 writes a timeout result and exits (supervisor parks, never re-dispatches).
 """
 
+import glob
 import json
 import os
 import re
@@ -31,6 +32,7 @@ import merge
 import verify
 from settings import (
     CHECKOUT_CHAR_BUDGET,
+    CODE_PATHS,
     EVIDENCE_DIR,
     GITHUB_REPO,
     HEARTBEAT_PATH,
@@ -108,20 +110,26 @@ def issue_data(issue):
 
 
 def checkout_files(worktree, char_budget=CHECKOUT_CHAR_BUDGET):
-    """Bounded view of the worktree for the implementer: root *.py, sorted,
-    whole files, stopped at the char budget. Excludes dotdirs and .factory/.
-    A hardcoded file tuple went blind on any repo deployed with other names.
+    """Bounded view of the worktree for the implementer: the CODE_PATHS
+    globs (worktree-relative), sorted by path, whole files, stopped at the
+    char budget. A path segment starting with "." excludes a file (dotdirs,
+    .factory/). A file matching two globs appears once. Default
+    CODE_PATHS=["*.py"] = the historical root-only view, byte-identical.
     """
+    paths = set()
+    for pat in CODE_PATHS:
+        for p in glob.glob(os.path.join(worktree, pat)):
+            rel = os.path.relpath(p, worktree)
+            if any(part.startswith(".") for part in rel.split(os.sep)):
+                continue
+            if not os.path.isfile(p):
+                continue
+            paths.add(rel)
     out, used = [], 0
-    for name in sorted(os.listdir(worktree)):
-        if not name.endswith(".py") or name.startswith("."):
-            continue
-        p = os.path.join(worktree, name)
-        if not os.path.isfile(p):
-            continue
-        with open(p) as f:
+    for rel in sorted(paths):
+        with open(os.path.join(worktree, rel)) as f:
             text = f.read()
-        block = "=== %s ===\n%s" % (name, text)
+        block = "=== %s ===\n%s" % (rel, text)
         if used + len(block) > char_budget:
             break  # sorted order → deterministic prefix; bigger repos truncate
         out.append(block)
@@ -370,7 +378,7 @@ def run(issue):
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
                        max_tokens=IMPLEMENTER_MAX_TOKENS,
                        reasoning_effort=IMPLEMENTER_REASONING_EFFORT)
-        lap.add_cost(r["usage"], "implementer")
+        names = {f.split("\n", 1)[0][4:-4] for f in files}
         with open(os.path.join(lap.evdir, "implementer_raw.txt"), "w") as f:
             f.write(r["content"])
         lap.event("implementer-done", finish_reason=r["finish_reason"], chars=len(r["content"]))
