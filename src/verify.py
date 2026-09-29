@@ -19,7 +19,7 @@ import subprocess
 import time
 import urllib.request
 import tempfile
-from settings import PROVENANCE_ENV, READY_TIMEOUT_S, SCENARIO_PORT_RANGE
+from settings import DEPLOY_MODE, PROVENANCE_ENV, READY_TIMEOUT_S, SCENARIO_PORT_RANGE
 
 
 class Hold(Exception):
@@ -222,6 +222,39 @@ def evaluate_assertion(assertion, port, saved, revision=None):
             saved[assertion["save"]] = m.group(0) if m else body.strip().strip('"')
     return result
 
+def evaluate_exec_assertion(assertion, cwd):
+    """`kind: "exec"` assertion: run argv with cwd = the candidate checkout,
+    pass on expected_exit match (+ stdout fragment if given). argv is the
+    scenario author's problem — the oracle is a dumb exec+match, no path
+    munging, no PYTHONPATH magic. HOLD only on harness-level inability
+    (spawn failure, timeout); a wrong exit code is a candidate FAIL.
+    """
+    result = {
+        "assertion": "exec %s" % " ".join(assertion["argv"]),
+        "expected_exit": assertion["expected_exit"],
+    }
+    try:
+        r = subprocess.run(assertion["argv"], cwd=cwd,
+                            capture_output=True, text=True, timeout=600)
+    except OSError as e:
+        return dict(result, status="HOLD", detail="cannot run: %s" % e)
+    except subprocess.TimeoutExpired as e:
+        return dict(result, status="HOLD",
+                    detail="timed out after %ss" % e.timeout)
+    result["observed_exit"] = r.returncode
+    frag = assertion.get("expect_stdout_fragment")
+    if frag:
+        result["expected_fragment"] = frag
+        result["fragment_found"] = frag in r.stdout
+        ok = r.returncode == assertion["expected_exit"] and result["fragment_found"]
+    else:
+        ok = r.returncode == assertion["expected_exit"]
+    if not ok:
+        result["detail"] = (r.stdout + r.stderr)[-1000:]
+    result["status"] = "pass" if ok else "fail"
+    return result
+
+
 
 def run_scenario(scenario, checkout_cwd, pid_file, port=None):
     """Boot candidate, run all assertions, tear down. Evidence = per-assertion.
@@ -233,13 +266,23 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
     """
     results = {"scenario": scenario["name"], "checks": []}
     saved = {}
-    port = free_port(port)
     # provenance-clean revision: candidate HEAD, only when env is not leaking
     if PROVENANCE_ENV in os.environ:
         results["checks"].append({"assertion": "provenance", "status": "HOLD",
                                   "detail": "%s is set" % PROVENANCE_ENV})
         results["verdict"] = "hold"
         return results
+    # a scenario whose assertions are ALL exec-kind has nothing to boot and
+    # needs no port — repos with no app.py run their oracle as plain argv
+    if scenario["assertions"] and all(a.get("kind") == "exec" for a in scenario["assertions"]):
+        for a in scenario["assertions"]:
+            results["checks"].append(evaluate_exec_assertion(a, checkout_cwd))
+        results["verdict"] = (
+            "pass" if all(c["status"] == "pass" for c in results["checks"]) and results["checks"]
+            else ("hold" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")
+        )
+        return results
+    port = free_port(port)
     revision = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=checkout_cwd,
         capture_output=True, text=True, check=True,
@@ -261,7 +304,10 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
         boot_candidate(boot_dir, port, pid_file)
         wait_ready(port, path=scenario.get("ready_path", "/health"))
         for a in scenario["assertions"]:
-            results["checks"].append(evaluate_assertion(a, port, saved, revision))
+            if a.get("kind") == "exec":
+                results["checks"].append(evaluate_exec_assertion(a, checkout_cwd))
+            else:
+                results["checks"].append(evaluate_assertion(a, port, saved, revision))
     finally:
         stop_candidate(pid_file)
         if tmp_boot:
@@ -298,19 +344,26 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None):
         # a file may hold one scenario or a list of scenarios
         for scenario in (data if isinstance(data, list) else [data]):
             evidence["scenarios"].append(run_scenario(scenario, checkout_cwd, pid_file))
-    # provenance uses the health check already captured by the scenario runner
-    try:
-        port = free_port()
-        boot_candidate(checkout_cwd, port, pid_file)
-        wait_ready(port)
-        _, health = http_req("GET", "127.0.0.1", port, "/health")
-        ok, detail = check_provenance(health, checkout_cwd)
-        evidence["provenance"] = {"status": "pass" if ok else "fail", "detail": detail}
-    except Hold as e:
-        evidence["provenance"] = {"status": "HOLD", "detail": str(e)}
-    finally:
-        stop_candidate(pid_file)
-    all_checks = [evidence["unit"]] + [c for s in evidence["scenarios"] for c in s["checks"]] + [evidence["provenance"]]
+    # provenance uses the health check already captured by the scenario runner.
+    # DEPLOY_MODE="none" (library repos) has no bootable candidate and no
+    # live rig: there is nothing to compare identity against — skipped, and
+    # a skip is not a pass (it is absent from all_checks entirely).
+    if DEPLOY_MODE == "none":
+        evidence["provenance"] = {"status": "skip", "detail": "DEPLOY_MODE=none"}
+        all_checks = [evidence["unit"]] + [c for s in evidence["scenarios"] for c in s["checks"]]
+    else:
+        try:
+            port = free_port()
+            boot_candidate(checkout_cwd, port, pid_file)
+            wait_ready(port)
+            _, health = http_req("GET", "127.0.0.1", port, "/health")
+            ok, detail = check_provenance(health, checkout_cwd)
+            evidence["provenance"] = {"status": "pass" if ok else "fail", "detail": detail}
+        except Hold as e:
+            evidence["provenance"] = {"status": "HOLD", "detail": str(e)}
+        finally:
+            stop_candidate(pid_file)
+        all_checks = [evidence["unit"]] + [c for s in evidence["scenarios"] for c in s["checks"]] + [evidence["provenance"]]
     statuses = {c["status"] for c in all_checks}
     evidence["verdict"] = "HOLD" if "HOLD" in statuses else ("pass" if statuses <= {"pass"} else "fail")
     return evidence

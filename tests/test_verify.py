@@ -441,5 +441,112 @@ class TestScenarioSelection(unittest.TestCase):
         paths = verify.scenario_paths(self.dir, issue=9)
         self.assertEqual([os.path.basename(p) for p in paths], ["toy-product.json"])
 
+
+class TestExecOracle(unittest.TestCase):
+    """kind: "exec" assertions run argv in the candidate checkout with no
+    boot, no port. A scenario that is ALL exec-kind never boots a
+    candidate (nightshift has no app.py)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        with open(os.path.join(self.dir, "probe.py"), "w") as f:
+            f.write("print('factory-exec-marker')\n")
+
+    def exec_a(self, **kw):
+        a = {"kind": "exec", "argv": ["python3", "probe.py"], "expected_exit": 0}
+        a.update(kw)
+        return a
+
+    def test_exit_zero_passes(self):
+        check = verify.evaluate_exec_assertion(self.exec_a(), self.dir)
+        self.assertEqual(check["status"], "pass")
+        self.assertEqual(check["observed_exit"], 0)
+
+    def test_fragment_required_when_given(self):
+        check = verify.evaluate_exec_assertion(
+            self.exec_a(expect_stdout_fragment="factory-exec-marker"), self.dir)
+        self.assertEqual(check["status"], "pass")
+        check = verify.evaluate_exec_assertion(
+            self.exec_a(expect_stdout_fragment="absent"), self.dir)
+        self.assertEqual(check["status"], "fail")
+        self.assertFalse(check["fragment_found"])
+
+    def test_wrong_exit_fails_not_holds(self):
+        with open(os.path.join(self.dir, "probe.py"), "w") as f:
+            f.write("raise SystemExit(3)\n")
+        check = verify.evaluate_exec_assertion(self.exec_a(), self.dir)
+        self.assertEqual(check["status"], "fail")
+        self.assertEqual(check["observed_exit"], 3)
+
+    def test_spawn_failure_is_hold_never_pass(self):
+        check = verify.evaluate_exec_assertion(
+            self.exec_a(argv=["/nonexistent/interpreter", "probe.py"]), self.dir)
+        self.assertEqual(check["status"], "HOLD")
+        self.assertIn("cannot run", check["detail"])
+
+    def test_all_exec_scenario_never_boots(self):
+        import unittest.mock as mock
+
+        scenario = {"name": "no-boot", "assertions": [self.exec_a()]}
+        with mock.patch.object(verify, "boot_candidate",
+                               side_effect=AssertionError("boot attempted")):
+            with mock.patch.object(verify, "free_port",
+                                   side_effect=AssertionError("port allocated")):
+                r = verify.run_scenario(scenario, self.dir, "unused.pid")
+        self.assertEqual(r["verdict"], "pass")
+        self.assertEqual(r["checks"][0]["status"], "pass")
+
+    def test_all_exec_scenario_failure_fails_scenario(self):
+        scenario = {"name": "no-boot-fail",
+                    "assertions": [self.exec_a(expected_exit=2)]}
+        r = verify.run_scenario(scenario, self.dir, "unused.pid")
+        self.assertEqual(r["verdict"], "fail")
+
+    def test_mixed_scenario_still_boots_and_runs_exec_checks(self):
+        # run_scenario captures the candidate revision from git (existing
+        # contract); the mixed boot path needs a real git checkout
+        import subprocess as sp
+
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+        for args in (["init", "-q"], ["add", "-A"],
+                     ["commit", "-qm", "c"]):
+            sp.run(["git"] + args, cwd=self.dir, check=True,
+                   capture_output=True, env=env)
+        # one HTTP assertion in the mix → boot path runs (the candidate is
+        # this app.py stand-in), the exec assertion runs alongside it
+        app = ('import json\n'
+               'from http.server import BaseHTTPRequestHandler, HTTPServer\n'
+               'class H(BaseHTTPRequestHandler):\n'
+               '    def log_message(self, *a):\n'
+               '        pass\n'
+               '    def do_GET(self):\n'
+               '        if self.path == "/health":\n'
+               '            b = json.dumps({"status": "ok"}).encode()\n'
+               '            self.send_response(200)\n'
+               '            self.send_header("Content-Length", str(len(b)))\n'
+               '            self.end_headers()\n'
+               '            self.wfile.write(b)\n'
+               '        else:\n'
+               '            self.send_response(404)\n'
+               '            self.end_headers()\n'
+               'HTTPServer(("127.0.0.1", 0), H).serve_forever()\n')
+        with open(os.path.join(self.dir, "app.py"), "w") as f:
+            f.write(app)
+        scenario = {
+            "name": "mixed",
+            "assertions": [
+                self.exec_a(),
+                {"method": "GET", "url": "http://127.0.0.1:{{port}}/health",
+                 "expected_status": 200},
+            ],
+        }
+        pid_file = os.path.join(self.dir, "mixed.pid")
+        r = verify.run_scenario(scenario, self.dir, pid_file)
+        self.assertEqual(r["verdict"], "pass", msg=r["checks"])
+        self.assertFalse(os.path.exists(pid_file))  # candidate was stopped
+        kinds = {c["assertion"].split(" ")[0] for c in r["checks"]}
+        self.assertEqual(kinds, {"exec", "GET"})
+
 if __name__ == "__main__":
     unittest.main()
