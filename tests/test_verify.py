@@ -1,8 +1,10 @@
 import json
 import os
+import socket
 import sys
 import tempfile
 import threading
+
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -411,7 +413,52 @@ class TestNoGitBoot(unittest.TestCase):
         finally:
             server.shutdown()
 
+class TestVerifyScenarioHold(unittest.TestCase):
+    def test_exhausted_scenario_port_range_returns_hold(self):
+        # Bind and listen on every port in a contiguous scenario range so
+        # free_port() raises Hold while the scenario ladder is running.
+        sockets = []
+        start = None
+        for candidate in range(30000, 60000):
+            trial = []
+            try:
+                for port in range(candidate, candidate + 11):
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.bind(("127.0.0.1", port))
+                    sock.listen(1)
+                    trial.append(sock)
+            except OSError:
+                for sock in trial:
+                    sock.close()
+                continue
+            sockets = trial
+            start = candidate
+            break
+        self.assertIsNotNone(start, "could not reserve a contiguous 11-port range")
+        try:
+            tmp = tempfile.mkdtemp()
+            scenarios = tempfile.mkdtemp()
+            with open(os.path.join(scenarios, "global.json"), "w") as f:
+                json.dump({"name": "needs-boot", "assertions": [{
+                    "method": "GET",
+                    "url": "http://127.0.0.1:{{port}}/health",
+                    "expected_status": 200,
+                }]}, f)
+            from unittest import mock
+            with mock.patch.object(verify, "SCENARIO_PORT_RANGE", (start, start + 11)), \
+                 mock.patch.object(verify, "DEPLOY_MODE", "none"), \
+                 mock.patch.object(verify, "run_unit_tests", return_value=(True, "Ran 1 test")):
+                evidence = verify.verify_candidate(tmp, os.path.join(tmp, "candidate.pid"),
+                                                   scenarios)
+            self.assertEqual(evidence["verdict"], "HOLD")
+            self.assertEqual(evidence["scenarios"][0]["verdict"], "hold")
+        finally:
+            for sock in sockets:
+                sock.close()
+
+
 class TestScenarioSelection(unittest.TestCase):
+
     """issue-<n>.json runs only for its issue; global files always run."""
 
     def setUp(self):
