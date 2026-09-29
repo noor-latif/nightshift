@@ -343,7 +343,18 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None):
             data = json.load(f)
         # a file may hold one scenario or a list of scenarios
         for scenario in (data if isinstance(data, list) else [data]):
-            evidence["scenarios"].append(run_scenario(scenario, checkout_cwd, pid_file))
+            try:
+                result = run_scenario(scenario, checkout_cwd, pid_file)
+            except Hold as e:
+                # Harness/resource unavailability is a HOLD, never a lap crash.
+                result = {
+                    "scenario": scenario.get("name", "unnamed"),
+                    "checks": [{"assertion": "scenario", "status": "HOLD",
+                                "detail": str(e)}],
+                    "verdict": "hold",
+                }
+            evidence["scenarios"].append(result)
+
     # provenance uses the health check already captured by the scenario runner.
     # DEPLOY_MODE="none" (library repos) has no bootable candidate and no
     # live rig: there is nothing to compare identity against — skipped, and
