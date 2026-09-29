@@ -46,6 +46,7 @@ class FakeLapEnv:
         # state/evidence + result file write into the tmp base, never real state/
         self.patches = [
             unittest.mock.patch.object(lap, "PRODUCT_REPO", self.repo),
+            unittest.mock.patch.object(lap, "CODE_PATHS", ["*.py"]),
             unittest.mock.patch.object(lap, "DEPLOY_MODE", deploy_mode),
             unittest.mock.patch.object(lap, "EVIDENCE_DIR",
                                       os.path.join(self.base, "evidence")),

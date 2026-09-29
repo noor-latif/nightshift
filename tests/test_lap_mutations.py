@@ -165,10 +165,14 @@ class TestApplyMutations(unittest.TestCase):
         self.assertEqual(results[0]["anchor_count"], 1)
         self.assertEqual(results[1]["applied"], False)
         self.assertIn(results[1]["error"], ("anchor not found", "anchor occurs 0 times"))
-
 class TestCheckoutFiles(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
+        # pin the default view: the suite must be invariant to the launch
+        # env (a self-run sets CODE_PATHS; unit-oracle runs inherit it)
+        self._p = unittest.mock.patch.object(lap, "CODE_PATHS", ["*.py"])
+        self._p.start()
+        self.addCleanup(self._p.stop)
 
     def write(self, name, content):
         with open(os.path.join(self.dir, name), "w") as f:
