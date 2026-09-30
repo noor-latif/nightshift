@@ -19,10 +19,10 @@ on its own code; 1 parked after honest gate kills; ZERO human interventions.**
 |---|---|---|---|---|---|
 | #1 claim_next merged-skip | 1 (supervised, pre-launch) | lap-start→…→verify-green→merged→deploy-skip→issue-closed | merged | #7 da1cf1cd | CLOSED |
 | #2 DRAIN-with-open-claim | 2 | lap-start → claimed → implementer-done → mutation-apply → review-accept → verify-green → merged → deploy-skip → issue-closed → lap-end | merged (retries 1) | #8 82879696 | CLOSED |
-| #3 apply_mutations newline | 2 | same, all green | merged (retries 1) | #9 a4b35b1d | CLOSED |
-| #4 Hold escapes verify | 2 | same, all green | merged (retries 1) | #10 e8fc858e | CLOSED |
+| #3 apply_mutations newline | 2 | attempt-1 killed at **review** (no-op fix rejected); attempt-2 full chain: lap-start → … → verify-green → merged → issue-closed | merged (retries 1) | #9 a4b35b1d | CLOSED |
+| #4 Hold escapes verify | 2 | attempt-1 killed at **mutation-apply** (anchor miss on tests/test_verify.py); attempt-2 full chain: lap-start → … → verify-green → merged → issue-closed | merged (retries 1) | #10 e8fc858e | CLOSED |
 | #5 parse_stream chunk | 1 | same, all green, first try | merged (retries 0) | #11 c98f7d18 | CLOSED |
-| #6 tick-error stranding | 3 | 3× killed at **mutation-apply**: `anchor occurs 0 times` on `src/supervisor.py` (`def dispatch…` / L-013 comment text) | **parked** (retries 3) | — | OPEN |
+| #6 tick-error stranding | 3 | 3× killed at **mutation-apply** on `src/supervisor.py`: every find block transcribed the L-013 disposition line with an extra space (`])] ["disposition"]` vs main's `])]["disposition"]`) — a one-char transcription defect repeated on every retry; the anchor text itself existed verbatim on main | **parked** (retries 3) | — | OPEN |
 
 Issue #1 was the supervised validation lap (PR #7, merged before launch-3, included
 for completeness). Issues #2–#6 were dispatched and resolved unattended in launch-3.
@@ -65,20 +65,36 @@ for completeness). Issues #2–#6 were dispatched and resolved unattended in lau
   landed 08:39Z; launch-3 started 08:47:20Z — every dispatch in the scored window
   saw post-rewording criteria. (The pre-08:39 criterion-1 review rejects live in the
   `aborted-launch2` log — already disclosed there, not part of this score.)
-- All 10 lap outcomes were gate verdicts (mutation-apply ×3, verify ×1 pre-attempt-1
-  of #2, rest green) — zero `crash` outcomes, zero gateway errors.
-- **The one genuine model failure** (#2 attempt-1, killed at verify): the implementer's
-  own regression test referenced `self.now`, an attribute its host class never sets —
-  caught by the candidate's unit suite at the verify rung, retried, fixed on attempt-2.
-  Harness-pristine under the launch env was verified at the time (fresh worktree of
-  fb8af5f2: 155 tests OK) — model-attributed, not harness-attributed.
-- **#6's park is anchor drift, stated as its cause**: all three attempts anchored on
-  `src/supervisor.py` text (`dispatch` signature / L-013 comment) that issues #2 and
-  #4's own merges had already rewritten mid-run. The model had a moving target —
-  worktree snapshots go stale as the session progresses. The oracle for #6
-  (tick-error-no-strand) is still RED on origin/main; the fix is real future work:
-  either a fresh issue whose criteria quote the current main's text, or a checkout
-  view refreshed per attempt.
+- All 10 lap outcomes were gate verdicts (review ×1, mutation-apply ×4, verify ×1,
+  green ×4) — zero `crash` outcomes, zero gateway errors. The six failing laps:
+  #2 attempt-1 (verify), #3 attempt-1 (review), #4 attempt-1 (mutation-apply), and
+  #6 attempts 1-3 (mutation-apply).
+- **The one genuine model implementation failure among the merged issues** (#2
+  attempt-1, killed at verify): the implementer's own regression test referenced
+  `self.now`, an attribute its host class never sets — caught by the candidate's
+  unit suite at the verify rung, retried, fixed on attempt-2. Harness-pristine
+  under the launch env was verified at the time (fresh worktree of fb8af5f2: 155
+  tests OK) — model-attributed, not harness-attributed.
+- **#6's park is a verbatim-anchoring (transcription) failure, not anchor drift**:
+  all three attempts' find blocks transcribed the L-013 disposition line
+  `state["issues"][str(claim["issue"])]["disposition"] = "merged"` with an extra
+  space — `])] ["disposition"]` where main has `])]["disposition"]` — while the rest
+  of the anchor (dispatch signature, docstring, L-013 comment) matched. The
+  anchor text existed VERBATIM on the main revision every attempt ran against
+  (post-#5 merge c98f7d18: verified in `git show c98f7d18:src/supervisor.py`,
+  ~L157-180); the spaced variant appears nowhere in the repo tree at that revision
+  (grep: 0 hits); and neither #2's (82879696, tick()'s DRAIN block only) nor #4's
+  (e8fc858e, src/verify.py + tests only) merge touched the dispatch/L-013 region —
+  so no moving target existed. The model simply mis-transcribed one character,
+  identically on every retry, and the mutation-apply gate correctly killed each
+  attempt (`anchor occurs 0 times`). 3 correct gate kills, parked correctly, issue
+  still OPEN. The oracle for #6 (tick-error-no-strand) is still RED on origin/main;
+  the fix is real future work (a fresh issue quoting current main's text). The
+  upgrade path that would have caught it sooner: a pre-apply anchor-exists
+  validation would have killed attempt-1 with a cheaper, clearer diagnosis (and
+  is worth having for the anchor-drift risk class too — but anchor drift was NOT
+  #6's cause).
+
 
 ## Chain integrity notes
 
@@ -92,3 +108,7 @@ for completeness). Issues #2–#6 were dispatched and resolved unattended in lau
   every merged lap's verify.json).
 
 Score pinned to: `state/interventions.jsonl.scored-snapshot` (identical bytes).
+
+Corrected 2026-09-30: #6 attribution (one-char transcription defect in the find
+block, not anchor drift) and failure taxonomy (review ×1, mutation-apply ×4,
+verify ×1, green ×4), evidence re-verified from the per-lap evidence dirs.

@@ -18,7 +18,7 @@ Note 2026-09-29: the sed form of this command silently no-ops on \b under sed 0.
 
 1. **Hostnames**: `nixlab` and any `*.latif.se` / private hostname → `[redacted-host]`.
 2. **Loopback ports**: `127.0.0.1:<port>` → `127.0.0.1:[redacted-port]` (loopback literal kept).
-3. **ntfy topics**: every `nightshift-<hex16>` literal (old `nightshift-388c2cd67dbf9d80`, new `[redacted-ntfy-topic]`) → `[redacted-ntfy-topic]`.
+3. **ntfy topics**: every `nightshift-<hex16>` literal (old `nightshift-388c2cd67dbf9d80`, new `nightshift-667cee7dc6ae22a6`) → `[redacted-ntfy-topic]`.
 4. **Env var references**: `SURPLUS_INTELLIGENCE_API_KEY` as a NAME is allowed (whitelisted; already in the public repo). No key VALUES were found anywhere (verified pre- and post-copy; see verification block).
 5. **Paths**: `/home/noor/` → `~/`. No other path changes.
 6. **Whitepaper**: `NIGHTSHIFT_WHITEPAPER.md` verified leak-clean pre-copy (0 hits on all patterns); copied; sed applied regardless (0 substitutions, as expected).
@@ -331,8 +331,8 @@ Inventory (all rows perl-processed; substitutions recorded per row):
 | `selfrun/scenarios/issue-5.json` | none | SELF_AUDIT_2026-09-29.md K1-K6 oracles (exec-kind); SELF_RUN_SCORE (red-recheck/verify-green usage) |
 | `selfrun/scenarios/issue-6.json` | none | SELF_AUDIT_2026-09-29.md K1-K6 oracles (exec-kind); SELF_RUN_SCORE (red-recheck/verify-green usage) |
 | `selfrun/state/interventions.jsonl` | none | renamed copy of interventions.jsonl.scored-snapshot (SELF_RUN_SCORE scored log, launch-3); byte-identical to live log |
-| `selfrun/state/interventions.jsonl.aborted-launch1-20260929T101550` | none | renamed copy of interventions.jsonl.scored-snapshot (SELF_RUN_SCORE scored log, launch-3); byte-identical to live log |
-| `selfrun/state/interventions.jsonl.aborted-launch2-20260929T104222` | none | renamed copy of interventions.jsonl.scored-snapshot (SELF_RUN_SCORE scored log, launch-3); byte-identical to live log |
+| `selfrun/state/interventions.jsonl.aborted-launch1-20260929T101550` | none | disclosed adjacent aborted-window log (SELF_RUN_SCORE_2026-09-29.md; stale-harness checkout/truncation) |
+| `selfrun/state/interventions.jsonl.aborted-launch2-20260929T104222` | none | disclosed adjacent aborted-window log (SELF_RUN_SCORE_2026-09-29.md; false wiring-report incident, corrected at the time) |
 | `selfrun/state/lap-result.json.supervised-issue1-20260929T100624` | none | SELF_RUN_SCORE_2026-09-29.md (issue #1 supervised validation lap, PR #7) |
 | `selfrun/state/state.json` | none | SELF_RUN_SCORE_2026-09-29.md (dispositions: #2-#5 merged, #6 parked) |
 | `selfrun/state/evidence/20260929T075718-issue-1.supervised-issue1-20260929T100624/applied.diff` | none | SELF_RUN_SCORE_2026-09-29.md (issue #1 supervised validation lap, PR #7) |
