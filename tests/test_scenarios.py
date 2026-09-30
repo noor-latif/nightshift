@@ -33,12 +33,12 @@ NAME_TO_ISSUE = {
 }
 
 # the dogfood dir is NOT in the repo: it lives in the self-run deployment
-# (~/nightshift-selfrun/scenarios-dogfood). Guards read it via env override
+# (~/nightshift-dogfood/scenarios-dogfood). Guards read it via env override
 # SCENARIOS_DOGFOOD_DIR, defaulting to the sibling deployment path; the
 # self-run test runner sets it explicitly.
 DOGFOOD_DIR = os.environ.get(
     "SCENARIOS_DOGFOOD_DIR",
-    os.path.expanduser("~/nightshift-selfrun/scenarios-dogfood"))
+    os.path.expanduser("~/nightshift-dogfood/scenarios-dogfood"))
 DOGFOOD_ISSUES = {6, 12, 13, 14}
 
 
