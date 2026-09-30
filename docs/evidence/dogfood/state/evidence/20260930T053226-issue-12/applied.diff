@@ -1,0 +1,95 @@
+diff --git a/src/lap.py b/src/lap.py
+index 576b424..ac720e0 100644
+--- a/src/lap.py
++++ b/src/lap.py
+@@ -354,9 +354,11 @@ class Lap:
+                 os._exit(70)
+             self._hb_stop.wait(10)
+ 
+-    def set_result(self, outcome, error=None):
++    def set_result(self, outcome, error=None, gate=None):
+         os.makedirs(os.path.dirname(RESULT_PATH) or ".", exist_ok=True)
+         row = {"issue": self.issue, "outcome": outcome, "run_id": self.run_id}
++        if gate:
++            row["gate"] = gate
+         if error:
+             row["error"] = str(error)
+         tmp = RESULT_PATH + ".tmp"
+@@ -367,7 +369,7 @@ class Lap:
+ 
+ def finish(lap, outcome, gate=None, error=None, caught=None):
+     """Terminal lap state: verdict evidence + result file for the supervisor."""
+-    verdict = {"verdict": "pass" if outcome == "success" else "fail", "outcome": outcome}
++    verdict = {"verdict": "pass" if outcome in ("success", "success-close-failed") else "fail", "outcome": outcome}
+     if gate:
+         verdict["gate"] = gate
+     if caught:
+@@ -376,7 +378,7 @@ def finish(lap, outcome, gate=None, error=None, caught=None):
+     if error is not None:
+         verdict["error"] = error if isinstance(error, str) else json.dumps(error, default=str)
+     lap._dump("verdict.json", verdict)
+-    lap.set_result(outcome, error=verdict.get("error"))
++    lap.set_result(outcome, error=verdict.get("error"), gate=gate)
+     lap.event("lap-end", outcome=outcome, gate=gate)
+ 
+ 
+@@ -495,8 +497,14 @@ def run(issue):
+             lap._dump("identity.json", ident)
+             if not ident["match"]:
+                 return finish(lap, "failure", gate="deploy-identity", error=ident)
+-        _gh(["issue", "close", str(issue), "--comment",
+-             "Merged and deployed by nightshift lap %s (PR: %s)" % (lap.run_id, m.get("pr"))])
++        try:
++            _gh(["issue", "close", str(issue), "--comment",
++                 "Merged and deployed by nightshift lap %s (PR: %s)" % (lap.run_id, m.get("pr"))])
++        except Exception as e:
++            close_error = "%s: %s" % (type(e).__name__, e)
++            lap.event("issue-close-failed", error=close_error)
++            return finish(lap, "success-close-failed", gate="issue-close",
++                          error=close_error)
+         lap.event("issue-closed")
+         finish(lap, "success")
+     except CostCeilingExceeded as e:
+diff --git a/src/selector.py b/src/selector.py
+index 692742f..c0a158e 100644
+--- a/src/selector.py
++++ b/src/selector.py
+@@ -11,7 +11,7 @@ import time
+ 
+ from settings import CLAIMS_DIR, LAP_WALLCLOCK_LIMIT_S, RETRY_BUDGET
+ 
+-OUTCOMES = ("success", "failure", "timeout", "crash", "queue-empty",
++OUTCOMES = ("success", "success-close-failed", "failure", "timeout", "crash", "queue-empty",
+             "apply_incomplete")
+ 
+ 
+@@ -112,7 +112,7 @@ def handle_outcome(outcome, issue, state, now):
+         raise ValueError("unknown outcome: %r" % (outcome,))
+     key = str(issue)
+     rec = state.setdefault("issues", {}).setdefault(key, {"retries": 0})
+-    if outcome == "success":
++    if outcome in ("success", "success-close-failed"):
+         rec["disposition"] = "merged"
+         return "merged"
+     if outcome == "queue-empty":
+diff --git a/src/supervisor.py b/src/supervisor.py
+index ad32e45..11122f2 100644
+--- a/src/supervisor.py
++++ b/src/supervisor.py
+@@ -244,6 +244,8 @@ def handle_lap_end(state, outcome, now, deps):
+     notify_fn = deps["notify"]
+     if outcome == "success":
+         notify_fn("lap issue %d: GREEN" % issue)
++    elif outcome == "success-close-failed":
++        notify_fn("lap issue %d: GREEN (issue close failed)" % issue)
+     else:
+         notify_fn("lap issue %d: %s (%s)" % (issue, outcome.upper(), disposition))
+     state["lap"] = None
+@@ -454,6 +456,7 @@ def main():
+             return "crash"
+         if r.get("issue") != lap["issue"] or r.get("outcome") not in OUTCOMES:
+             return "crash"
++        lap["gate"] = r.get("gate")
+         return r["outcome"]
+ 
+     box = {}

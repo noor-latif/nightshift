@@ -1,0 +1,31 @@
+diff --git a/src/lap.py b/src/lap.py
+index ac720e0..314f668 100644
+--- a/src/lap.py
++++ b/src/lap.py
+@@ -485,10 +485,26 @@ def run(issue):
+             fd, spath = tempfile.mkstemp(suffix=".sh")
+             with os.fdopen(fd, "w") as f:
+                 f.write(script)
++            deploy_timeout = None
++            timeout_tail = ""
+             try:
+                 d = subprocess.run(["bash", spath], capture_output=True, text=True, timeout=120)
++            except subprocess.TimeoutExpired as e:
++                deploy_timeout = e
++                stdout = e.stdout or ""
++                stderr = e.stderr or ""
++                if isinstance(stdout, bytes):
++                    stdout = stdout.decode("utf-8", "replace")
++                if isinstance(stderr, bytes):
++                    stderr = stderr.decode("utf-8", "replace")
++                timeout_tail = (stdout + stderr)[-300:]
+             finally:
+                 os.unlink(spath)
++            if deploy_timeout is not None:
++                lap.event("deploy", rc="timeout", timed_out=True,
++                          timeout=deploy_timeout.timeout, tail=timeout_tail)
++                return finish(lap, "failure", gate="deploy-timeout",
++                              error=str(deploy_timeout))
+             lap.event("deploy", rc=d.returncode, tail=(d.stdout + d.stderr)[-300:])
+             if d.returncode != 0:
+                 return finish(lap, "failure", gate="deploy", error=(d.stdout + d.stderr)[-2000:])

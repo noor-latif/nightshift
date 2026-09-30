@@ -1,0 +1,54 @@
+[
+ {
+  "ts": "2026-09-30T05:32:26Z",
+  "event": "lap-start",
+  "issue": 12,
+  "run_id": "20260930T053226-issue-12"
+ },
+ {
+  "ts": "2026-09-30T05:32:27Z",
+  "event": "claimed",
+  "title": "A fully-green lap (merged+deployed) whose gh issue close fails is recorded outcome=crash \u2014 mislabeled terminal state, retry consumed, false CRASH notification"
+ },
+ {
+  "ts": "2026-09-30T05:35:58Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 4940
+ },
+ {
+  "ts": "2026-09-30T05:35:58Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 7 mutations"
+ },
+ {
+  "ts": "2026-09-30T05:37:23Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-30T05:37:28Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-30T05:37:37Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/nightshift/pull/15",
+  "merge_sha": "397717e7cb144dba808840d1c4c0ba18f347f980"
+ },
+ {
+  "ts": "2026-09-30T05:37:37Z",
+  "event": "deploy-skip",
+  "mode": "none"
+ },
+ {
+  "ts": "2026-09-30T05:37:39Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-30T05:37:39Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

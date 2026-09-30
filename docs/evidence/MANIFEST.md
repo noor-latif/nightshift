@@ -445,9 +445,95 @@ Inventory (all rows perl-processed; substitutions recorded per row):
 | `selfrun/state/evidence/ntfy/receipts.json` | none | ntfy delivery receipts; no topic literal present |
 | `selfrun/state/evidence/ntfy.aborted-launch2-20260929T104222/receipts.json` | none | SELF_RUN_SCORE_2026-09-29.md (disclosed adjacent aborted window; false wiring-report incident) |
 
-## Verification block (rerun over the COPY TREE, excluding MANIFEST.md itself)
+## Dogfood run (2026-09-30) additions — 2026-09-30 publication
 
-The manifest necessarily names the redaction patterns (host, old ntfy topic, `/home/noor/`) to document the rules, so it is excluded from its own verification greps. Actual results from the final pass (2026-09-30, whole corpus incl. self-run additions; the 2026-09-29 pass had identical zeros):
+Source: `~/nightshift-dogfood/` (read-only). Layout mirrors the selfrun/ conventions, namespaced under `dogfood/`:
+
+- `docs/DOGFOOD_SCORE_2026-09-30.md` — the dogfood run's formal score (run window 2026-09-30T05:13:53Z→05:56:45Z, deployment clone f41cadd-era; 2 merged PRs #15/#16, 2 parked, $0.006457, zero undisclosed operator actions).
+- `docs/DECISIONS.md` — operator-disclosure record (F3); the score's zero-intervention basis cites its two 2026-09-30 topic-rotation disclosures.
+- `dogfood/state/interventions.jsonl` — the scored log (36 rows, window 05:13:53Z→05:56:45Z), copied verbatim (live log, not a rotated snapshot — the run is drained/halted).
+- `dogfood/state/state.json` — terminal dispositions (#12/#13 merged, #6/#14 parked retries=3).
+- `dogfood/state/evidence/20260930T*-issue-*` (8 dirs) — per-lap evidence incl. the restart-killed #14 a1 dir (timeline only); same file classes as S1/selfrun dirs.
+- `dogfood/state/evidence/ntfy/receipts.json` — delivery receipts (9 rows, all HTTP 200); no topic literal present (grep-verified).
+- `dogfood/scenarios/issue-{6,12,13,14}.json` — the oracles served from the deployment's own `scenarios-dogfood/` dir.
+- Excluded (S1/selfrun precedent): `lap-*.log` (zero-byte), `heartbeat`, `supervisor.lock`, live `lap-result.json` (terminal row superseded by the scored log's row 36), `claims/` (empty at copy time).
+- Leak-class inspection: every candidate file grep-scanned pre-copy; only `/home/noor/` paths (rule 5) found (verify.json unit-output listings). No hostnames, loopback ports, ntfy topics, API-key values, or token shapes in the dogfood sources; the score doc + DECISIONS.md were verified literal-clean pre-copy.
+
+Inventory (all rows perl-processed; substitutions recorded per row):
+
+| Path | Redactions applied | Citations / note |
+|---|---|---|
+| `docs/DOGFOOD_SCORE_2026-09-30.md` | none | dogfood run score (run window 2026-09-30T05:13:53Z→05:56:45Z, deployment clone f41cadd-era); leak-clean, perl no-op |
+| `docs/DECISIONS.md` | none | operator-disclosure record (F3); DOGFOOD_SCORE zero-intervention basis; leak-clean, perl no-op |
+| `dogfood/scenarios/issue-6.json` | none | DOGFOOD_SCORE_2026-09-30.md (dogfood oracle, red-recheck usage) |
+| `dogfood/scenarios/issue-12.json` | none | DOGFOOD_SCORE_2026-09-30.md (oracle `close-failure-not-crash`, K12-RED-GREEN) |
+| `dogfood/scenarios/issue-13.json` | none | DOGFOOD_SCORE_2026-09-30.md (oracle `reap-attributes-issue`, K13-RED-GREEN) |
+| `dogfood/scenarios/issue-14.json` | none | DOGFOOD_SCORE_2026-09-30.md (dogfood oracle, red-recheck usage) |
+| `dogfood/state/interventions.jsonl` | none | DOGFOOD_SCORE_2026-09-30.md scored log (36 rows, 05:13:53Z→05:56:45Z) |
+| `dogfood/state/state.json` | none | DOGFOOD_SCORE_2026-09-30.md (dispositions: #12/#13 merged, #6/#14 parked) |
+| `dogfood/state/evidence/20260930T051402-issue-6/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md (#6 a1 killed at mutation-apply; transcription-defect occurrence 5) |
+| `dogfood/state/evidence/20260930T051402-issue-6/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md per-lap cost table |
+| `dogfood/state/evidence/20260930T051402-issue-6/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T051402-issue-6/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T051402-issue-6/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T051402-issue-6/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052139-issue-6/applied.diff` | none | DOGFOOD_SCORE_2026-09-30.md (#6 a2 killed at review — no parseable verdict) |
+| `dogfood/state/evidence/20260930T052139-issue-6/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052139-issue-6/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md (reviewer 4096-token cap) |
+| `dogfood/state/evidence/20260930T052139-issue-6/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052139-issue-6/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052139-issue-6/review.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052139-issue-6/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052139-issue-6/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md dated corrections (#6 review taxonomy) |
+| `dogfood/state/evidence/20260930T052749-issue-6/applied.diff` | none | DOGFOOD_SCORE_2026-09-30.md (#6 a3 killed at review → PARK) |
+| `dogfood/state/evidence/20260930T052749-issue-6/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052749-issue-6/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md (reviewer 4096-token cap) |
+| `dogfood/state/evidence/20260930T052749-issue-6/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052749-issue-6/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052749-issue-6/review.txt` | none | DOGFOOD_SCORE_2026-09-30.md (truncated body carries the fake-gh double-escaping analysis) |
+| `dogfood/state/evidence/20260930T052749-issue-6/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T052749-issue-6/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md dated corrections (#6 review taxonomy) |
+| `dogfood/state/evidence/20260930T053226-issue-12/applied.diff` | none | DOGFOOD_SCORE_2026-09-30.md (#12 merged first attempt, PR #15 397717e7) |
+| `dogfood/state/evidence/20260930T053226-issue-12/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053226-issue-12/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md per-lap cost table |
+| `dogfood/state/evidence/20260930T053226-issue-12/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053226-issue-12/merge.json` | none | DOGFOOD_SCORE_2026-09-30.md (PR #15) |
+| `dogfood/state/evidence/20260930T053226-issue-12/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053226-issue-12/review.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053226-issue-12/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053226-issue-12/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053226-issue-12/verify.json` | path x7 | DOGFOOD_SCORE_2026-09-30.md (oracle `close-failure-not-crash`, K12-RED-GREEN) |
+| `dogfood/state/evidence/20260930T053953-issue-13/applied.diff` | none | DOGFOOD_SCORE_2026-09-30.md (#13 merged, restart-reconciled, PR #16 1404d6f5) |
+| `dogfood/state/evidence/20260930T053953-issue-13/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053953-issue-13/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md per-lap cost table |
+| `dogfood/state/evidence/20260930T053953-issue-13/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053953-issue-13/merge.json` | none | DOGFOOD_SCORE_2026-09-30.md (PR #16) |
+| `dogfood/state/evidence/20260930T053953-issue-13/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053953-issue-13/review.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053953-issue-13/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md dated corrections (#13 restart account; last event 05:41:00Z) |
+| `dogfood/state/evidence/20260930T053953-issue-13/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T053953-issue-13/verify.json` | path x7 | DOGFOOD_SCORE_2026-09-30.md (oracle `reap-attributes-issue`, K13-RED-GREEN) |
+| `dogfood/state/evidence/20260930T054408-issue-14/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md (#14 a1 restart-killed in flight; dir holds only lap-start + claimed) |
+| `dogfood/state/evidence/20260930T054635-issue-14/applied.diff` | none | DOGFOOD_SCORE_2026-09-30.md (#14 a2 killed at review — substantive reject) |
+| `dogfood/state/evidence/20260930T054635-issue-14/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T054635-issue-14/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md per-lap cost table |
+| `dogfood/state/evidence/20260930T054635-issue-14/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T054635-issue-14/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T054635-issue-14/review.txt` | none | DOGFOOD_SCORE_2026-09-30.md (criterion-4 regression test absent) |
+| `dogfood/state/evidence/20260930T054635-issue-14/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T054635-issue-14/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T055134-issue-14/applied.diff` | none | DOGFOOD_SCORE_2026-09-30.md (#14 a3 killed at review → PARK) |
+| `dogfood/state/evidence/20260930T055134-issue-14/claimed.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T055134-issue-14/cost.json` | none | DOGFOOD_SCORE_2026-09-30.md per-lap cost table |
+| `dogfood/state/evidence/20260930T055134-issue-14/implementer_raw.txt` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T055134-issue-14/mutations.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T055134-issue-14/review.txt` | none | DOGFOOD_SCORE_2026-09-30.md (same criterion-4 reject) |
+| `dogfood/state/evidence/20260930T055134-issue-14/timeline.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/20260930T055134-issue-14/verdict.json` | none | DOGFOOD_SCORE_2026-09-30.md per-issue rows |
+| `dogfood/state/evidence/ntfy/receipts.json` | none | ntfy delivery receipts (9 rows, all HTTP 200); no topic literal present (grep-verified) |
+
+## Verification block (rerun over the COPY TREE, excluding MANIFEST.md itself)
+The manifest necessarily names the redaction patterns (host, old ntfy topic, `/home/noor/`) to document the rules, so it is excluded from its own verification greps. Actual results from the final pass (2026-09-30, whole corpus incl. self-run + dogfood additions; prior passes had identical zeros):
 
 ```
 cd ~/repos/factory-docs-publication
@@ -461,6 +547,7 @@ find . -type f | wc -l                                                   # 382 (
 ```
 
 Whitelisted, expected non-zero: bare `127.0.0.1` loopback literal (without a port), and the env-var NAME `SURPLUS_INTELLIGENCE_API_KEY` (5 files reference the name only, never a value).
+Amended standing rule (2026-09-30, DECISIONS.md): pre-push leak gates run by PATTERN over the whole staged corpus INCLUDING MANIFEST.md (the rule-doc regex literals above are non-matching by construction); the historical greps above are retained as the packaging-time record.
 
 ## Publish command (owner runs; NOT executed by packaging)
 
@@ -473,3 +560,5 @@ git add docs/evidence && \
 git commit -m "S1 + self-run evidence corpus (redacted, see docs/evidence/MANIFEST.md)" && \
 git push origin main
 ```
+
+2026-09-30 dogfood publication: rsync staged → `docs/evidence/` per pipeline; jj commit from the canonical jj-colocated repo, `jj git push --bookmark main`.

@@ -1,0 +1,7 @@
+[
+ {
+  "file": "src/lap.py",
+  "find": "            try:\n                d = subprocess.run([\"bash\", spath], capture_output=True, text=True, timeout=120)\n            finally:\n                os.unlink(spath)\n            lap.event(\"deploy\", rc=d.returncode, tail=(d.stdout + d.stderr)[-300:])",
+  "replace": "            deploy_timeout = None\n            timeout_tail = \"\"\n            try:\n                d = subprocess.run([\"bash\", spath], capture_output=True, text=True, timeout=120)\n            except subprocess.TimeoutExpired as e:\n                deploy_timeout = e\n                stdout = e.stdout or \"\"\n                stderr = e.stderr or \"\"\n                if isinstance(stdout, bytes):\n                    stdout = stdout.decode(\"utf-8\", \"replace\")\n                if isinstance(stderr, bytes):\n                    stderr = stderr.decode(\"utf-8\", \"replace\")\n                timeout_tail = (stdout + stderr)[-300:]\n            finally:\n                os.unlink(spath)\n            if deploy_timeout is not None:\n                lap.event(\"deploy\", rc=\"timeout\", timed_out=True,\n                          timeout=deploy_timeout.timeout, tail=timeout_tail)\n                return finish(lap, \"failure\", gate=\"deploy-timeout\",\n                              error=str(deploy_timeout))\n            lap.event(\"deploy\", rc=d.returncode, tail=(d.stdout + d.stderr)[-300:])"
+ }
+]

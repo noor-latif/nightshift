@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-30T05:46:35Z",
+  "event": "lap-start",
+  "issue": 14,
+  "run_id": "20260930T054635-issue-14"
+ },
+ {
+  "ts": "2026-09-30T05:46:36Z",
+  "event": "claimed",
+  "title": "Deploy-script subprocess timeout escapes as generic crash with NO deploy event row \u2014 rig state unknown, only the next lap's identity readback is the backstop"
+ },
+ {
+  "ts": "2026-09-30T05:48:24Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 1418
+ },
+ {
+  "ts": "2026-09-30T05:48:24Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 1 mutations"
+ },
+ {
+  "ts": "2026-09-30T05:49:18Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "review"
+ }
+]

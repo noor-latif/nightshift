@@ -1,0 +1,15 @@
+{
+ "name": "close-failure-not-crash",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import json, os, subprocess, sys, tempfile, unittest.mock as mock\nsys.path.insert(0, 'src')\nbase = tempfile.mkdtemp()\ndef git(cwd, *a):\n    r = subprocess.run(['git'] + list(a), cwd=cwd, capture_output=True, text=True)\n    assert r.returncode == 0, r.stderr\nup = os.path.join(base, 'upstream'); os.mkdir(up)\ngit(up, 'init', '-q', '-b', 'main')\nopen(os.path.join(up, 'app.py'), 'w').write('x = 1\\n')\ngit(up, 'add', '-A'); git(up, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init')\nrepo = os.path.join(base, 'repo'); git(base, 'clone', '-q', up, repo); git(repo, 'fetch', '-q', 'origin')\nimport lap\ndef fake_gh(args):\n    if args[:2] == ['issue', 'close']:\n        raise RuntimeError('gh: unauthorized')\n    return ''\nresult_path = os.path.join(base, 'lap-result.json')\npatches = [\n    mock.patch.object(lap, 'PRODUCT_REPO', repo),\n    mock.patch.object(lap, 'CODE_PATHS', ['*.py']),\n    mock.patch.object(lap, 'DEPLOY_MODE', 'none'),\n    mock.patch.object(lap, 'EVIDENCE_DIR', os.path.join(base, 'evidence')),\n    mock.patch.object(lap, 'RESULT_PATH', result_path),\n    mock.patch.object(lap, 'HEARTBEAT_PATH', os.path.join(base, 'hb')),\n    mock.patch.object(lap, 'issue_data', lambda i: {'title': 't', 'body': 'Acceptance criteria:\\nfix'}),\n    mock.patch.object(lap, '_gh', fake_gh),\n    mock.patch.object(lap.agent, 'chat', lambda m, model, **k: {'content': json.dumps([{'file': 'app.py', 'find': 'x = 1', 'replace': 'x = 2'}]) if model == lap.IMPLEMENTER_MODEL else 'VERDICT: accept', 'finish_reason': 'stop', 'usage': {'buyer_cost_micro': 1000}}),\n    mock.patch.object(lap.merge, 'full_merge', lambda i, r, wt, ev: {'merged': True, 'pr': 1, 'merge_sha': 'abc'}),\n    mock.patch.object(lap.verify, 'verify_candidate', lambda c, p, s, issue=None: {'verdict': 'pass'}),\n]\nfor p in patches: p.start()\ntry:\n    lap.run(21)\nfinally:\n    for p in reversed(patches): p.stop()\nresult = json.load(open(result_path))\nassert result['outcome'] != 'crash', 'RED: fully-green lap recorded outcome=crash: %s' % result\nassert result.get('gate') == 'issue-close', 'RED: close failure must be gate=issue-close: %s' % result\nprint('K12-RED-GREEN')"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K12-RED-GREEN"
+  }
+ ]
+}

@@ -1,0 +1,57 @@
+diff --git a/src/supervisor.py b/src/supervisor.py
+index 11122f2..261d6e4 100644
+--- a/src/supervisor.py
++++ b/src/supervisor.py
+@@ -367,8 +367,20 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
+         try:
+             claim = read_claim(path)
+         except Exception:
+-            dead.append((path, {"issue": None}))
+-            continue
++            # A torn claim still carries its issue identity in the canonical
++            # filename. Recover it so the normal crash-accounting path runs.
++            try:
++                issue = int(name[len("issue-"):-len(".json")])
++            except ValueError:
++                issue = None
++            claim = {"issue": issue}
++            if issue is None:
++                runtime_log("intervention",
++                            detail="UNATTRIBUTABLE orphan claim reaped: filename has no issue number: %s"
++                                   % path,
++                            claim=path)
++                dead.append((path, claim))
++                continue
+         issue = claim.get("issue")
+         if issue is not None and issue == live_issue:
+             continue  # the live lap owns this claim; mid-flight ≠ orphan
+diff --git a/tests/test_supervisor.py b/tests/test_supervisor.py
+index 89c0af4..63d301b 100644
+--- a/tests/test_supervisor.py
++++ b/tests/test_supervisor.py
+@@ -703,13 +703,22 @@ class TestReconcileDeadClaims(unittest.TestCase):
+         self.assertEqual(len(dead), 1)
+         self.assertEqual(state["issues"]["5"]["retries"], 3)
+ 
+-    def test_unparseable_claim_reaped(self):
++    def test_unparseable_claim_reaped_and_accounted_from_filename(self):
+         path = os.path.join(self.claims, "issue-5.json")
+         with open(path, "w") as f:
+             f.write("not json")
+-        dead = self.run_reconcile({"issues": {}})
++        state = {"issues": {}}
++        dead = self.run_reconcile(state)
+         self.assertEqual(len(dead), 1)
+-        self.assertEqual(dead[0][1]["issue"], None)
++        self.assertEqual(dead[0][0], path)
++        self.assertEqual(dead[0][1]["issue"], 5)
++        self.assertEqual(state["issues"]["5"]["retries"], 1)
++        self.assertEqual(state["issues"]["5"]["disposition"], "retry")
++        with open(self.log) as f:
++            rows = [json.loads(line) for line in f]
++        self.assertEqual(rows[-1]["event"], "intervention")
++        self.assertEqual(rows[-1]["issue"], 5)
++        self.assertIn("crash counted at reap", rows[-1]["detail"])
+ 
+     def test_foreign_result_file_not_terminal(self):
+         # result for a different issue must not mark this claim terminal

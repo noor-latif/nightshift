@@ -1,0 +1,15 @@
+{
+ "name": "reap-attributes-issue",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import json, os, sys, tempfile, time\nsys.path.insert(0, 'src')\nimport supervisor\ntmp = tempfile.mkdtemp()\nclaims = os.path.join(tmp, 'claims'); os.mkdir(claims)\nopen(os.path.join(claims, 'issue-18.json'), 'w').write('{\"issue\": 18, \"claimed_at\": ')\nlog = os.path.join(tmp, 'interventions.jsonl')\nstate = {'issues': {}, 'lap': None, 'started_at': None}\nwith unittest_mock_patch() if False else __import__('contextlib').nullcontext():\n    pass\nimport unittest.mock\nwith unittest.mock.patch.object(supervisor, 'RUNTIME_LOG_PATH', log):\n    dead = supervisor.reconcile_dead_claims(time.time(), state, claims,\n                                             result_path=os.path.join(tmp, 'lap-result.json'))\nrows = [json.loads(l) for l in open(log)] if os.path.exists(log) else []\nattributed = any(r.get('issue') == 18 for r in rows)\ncounted = state.get('issues', {}).get('18', {}).get('retries', 0) > 0 or any(\n    str(r.get('disposition')) for r in rows if r.get('issue') == 18)\nassert attributed and counted, 'RED: corrupt claim reaped with issue=None, no accounting, no attributed row: dead=%s state=%s rows=%s' % (dead, state, rows)\nprint('K13-RED-GREEN')"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K13-RED-GREEN"
+  }
+ ]
+}

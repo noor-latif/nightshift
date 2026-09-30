@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-30T05:14:02Z",
+  "event": "lap-start",
+  "issue": 6,
+  "run_id": "20260930T051402-issue-6"
+ },
+ {
+  "ts": "2026-09-30T05:14:03Z",
+  "event": "claimed",
+  "title": "main()'s tick-error loop strands the issue whose claim was written before the error \u2014 no release, no retry, silent 3h idle"
+ },
+ {
+  "ts": "2026-09-30T05:19:32Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 3812
+ },
+ {
+  "ts": "2026-09-30T05:19:32Z",
+  "event": "mutation-apply",
+  "ok": false,
+  "detail": "mutation-apply: src/supervisor.py: anchor occurs 0 times (expected 1), anchor prefix: '    # L-013: never spend a lap on an already-satisfied issue'"
+ },
+ {
+  "ts": "2026-09-30T05:19:32Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "mutation-apply"
+ }
+]

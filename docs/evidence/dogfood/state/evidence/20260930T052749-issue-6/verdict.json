@@ -1,0 +1,6 @@
+{
+ "verdict": "fail",
+ "outcome": "failure",
+ "gate": "review",
+ "caught_confabulation": "reviewer gave no parseable verdict"
+}

@@ -1,0 +1,9 @@
+**Criterion 1 — PASS.** `tests/test_supervisor.py::test_unparseable_claim_reaped_and_accounted_from_filename` implements the equivalent repro: writes corrupt `issue-5.json`, calls `reconcile_dead_claims`, asserts attribution from filename (`dead[0][1]["issue"] == 5`), retry accounting (`state["issues"]["5"]["retries"] == 1`, `disposition == "retry"`), and the intervention row naming the issue (`rows[-1]["issue"] == 5`) — satisfying the "and/or an equivalent test inside tests/" clause.
+
+**Criterion 2 — PASS.** The diff only replaces the `except` branch of `read_claim`; the parseable orphan path (`handle_outcome("crash", ...)` + the existing `intervention` row in the `elif issue is not None:` branch) is untouched, and the existing test `test_unaccounted_crash_counts_retries_at_reap` remains intact and consistent with the post-apply supervisor.py.
+
+**Criterion 3 — PASS.** The live-lap exclusion (`if issue is not None and issue == live_issue: continue`) is unchanged in supervisor.py, and `test_live_lap_claim_never_counted_nor_reaped` still guards it; the new fallback path falls through to the same exclusion check.
+
+**Criterion 4 — PASS.** The regression test asserts (a) attribution from filename (`dead[0][1]["issue"] == 5`) and (b) retry accounting fired (retries/disposition + intervention row); on pre-fix code the `except` branch did `dead.append((path, {"issue": None}))` and `continue`, so `dead[0][1]["issue"]` would be `None`, state unchanged, and no "crash counted at reap" row — the test fails on pre-fix code as required.
+
+VERDICT: accept

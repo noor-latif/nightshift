@@ -1,0 +1,4 @@
+## Review
+
+**Criterion 1 (repro harness satisfied by oracle and/or equivalent test in tests/): FAIL**
+The new test `test_start_lap_error_releases_claim_for_next_tick` is meant to be that equivalent test, but as written in the candidate file its fake-`gh` stub is broken: every line uses `\\n` / `\\\"` (double escapes), e.g. `f.write("#!%s\\n" % sys.executable)` and `"if sys.argv[1] == 'issue':\\n"`. The resulting script file is a single line with a corrupt shebang (`#!<python>\nimport sys\nif...` all one line, literal backslash-n bytes), unlike every other stub in the suite (e.g. `test_deploy.py` uses `"#!%s\n"`). Executing it via `selector

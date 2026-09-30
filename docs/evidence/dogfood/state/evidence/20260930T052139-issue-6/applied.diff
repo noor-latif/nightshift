@@ -1,0 +1,112 @@
+diff --git a/src/supervisor.py b/src/supervisor.py
+index ad32e45..605ba1f 100644
+--- a/src/supervisor.py
++++ b/src/supervisor.py
+@@ -209,9 +209,27 @@ def dispatch(state, now, deps):
+     # wallclock guard measures the current lap session, not all history:
+     # refresh so a supervisor restarted hours later dispatches instead of HALT
+     state["started_at"] = now
+-    deps["start_lap"](claim["issue"], state["lap"])
+-    runtime_log("dispatch", issue=claim["issue"], pid=state["lap"].get("pid"))
+-    save_state(state, deps["state_path"])
++    try:
++        deps["start_lap"](claim["issue"], state["lap"])
++        runtime_log("dispatch", issue=claim["issue"], pid=state["lap"].get("pid"))
++        save_state(state, deps["state_path"])
++    except Exception as e:
++        # The claim was acquired before dispatch bookkeeping completed. Release
++        # it so a failed spawn or state write cannot block this issue for hours.
++        # If a child was started before the failure, stop it before retrying.
++        if state["lap"].get("pid"):
++            try:
++                deps["kill_lap"](state["lap"])
++            except Exception:
++                pass
++        state["lap"] = None
++        try:
++            os.remove(claim["path"])
++        except OSError:
++            pass
++        runtime_log("intervention", issue=claim["issue"],
++                    detail="dispatch failed; released claim %s: %r" % (claim["path"], e))
++        raise
+     return "dispatched"
+ 
+ 
+diff --git a/tests/test_supervisor.py b/tests/test_supervisor.py
+index 89c0af4..5e48e04 100644
+--- a/tests/test_supervisor.py
++++ b/tests/test_supervisor.py
+@@ -129,7 +129,9 @@ class TestSupervisorStateMachine(unittest.TestCase):
+ 
+ if __name__ == "__main__":
+     unittest.main()
++
+ class TestNotifyGuard(unittest.TestCase):
++
+     """notify is best-effort: an ntfy outage never kills a lap."""
+     def setUp(self):
+         # never write the real state/evidence/ntfy receipts (test pollution);
+@@ -316,7 +318,62 @@ supervisor.main()
+         self.assertEqual(run_main(["dispatch:idle", "BLOCKED:9"]), 1)
+         self.assertEqual(run_main(["dispatch:idle", "DRAIN:0 parked, 0 merged"]), 0)
+ 
++class TestTickErrorClaimRecovery(unittest.TestCase):
++    def test_failed_post_claim_dispatch_releases_claim_for_next_tick(self):
++        import selector
++
++        tmp = tempfile.mkdtemp()
++        gh = os.path.join(tmp, "gh")
++        with open(gh, "w") as f:
++            f.write("#!%s\n" % sys.executable)
++            f.write(
++                "import sys\\n"
++                "if sys.argv[1:3] == ['issue', 'list']:\\n"
++                "    print('[{\\\"number\\\": 18, \\\"createdAt\\\": \\\"2026-01-01T00:00:00Z\\\"}]')\\n"
++                "else:\\n"
++                "    print('[]')\\n"
++            )
++        os.chmod(gh, 0o755)
++        claims = os.path.join(tmp, "claims")
++        state_path = os.path.join(tmp, "state.json")
++        starts = []
++
++        def start_lap(issue, lap):
++            starts.append(issue)
++            if len(starts) == 1:
++                raise RuntimeError("spawn failed")
++            lap["pid"] = 4242
++
++        deps = {
++            "state_path": state_path,
++            "claim": lambda now: selector.claim_next(
++                "o/r", issues_dir=claims, now=now, gh=gh),
++            "start_lap": start_lap,
++            "kill_lap": lambda lap: None,
++            "notify": lambda text: None,
++            "reconcile": lambda now: [],
++            "break_claim": lambda path, now: os.remove(path),
++            "red_recheck": lambda issue: ("fail", None),
++        }
++        state = supervisor.load_state(state_path)
++        with unittest.mock.patch.object(
++                supervisor, "RUNTIME_LOG_PATH", os.path.join(tmp, "log.jsonl")):
++            with self.assertRaisesRegex(RuntimeError, "spawn failed"):
++                supervisor.tick(state, 1000.0, deps)
++            claim_path = os.path.join(claims, "issue-18.json")
++            self.assertFalse(os.path.exists(claim_path))
++            events = supervisor.tick(supervisor.load_state(state_path), 1005.0, deps)
++
++        self.assertIn("dispatch:dispatched", events)
++        self.assertEqual(starts, [18, 18])
++        with open(os.path.join(tmp, "log.jsonl")) as f:
++            rows = [json.loads(line) for line in f]
++        self.assertTrue(any(r["event"] == "intervention" and
++                            "released claim" in r["detail"] for r in rows))
++
++
+ class TestInstanceLock(unittest.TestCase):
++
+     """Two supervisors must never run concurrently (L-009 restart races)."""
+ 
+     def test_second_acquire_raises_when_held(self):

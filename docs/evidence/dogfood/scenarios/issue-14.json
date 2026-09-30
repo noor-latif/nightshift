@@ -1,0 +1,15 @@
+{
+ "name": "deploy-timeout-evidenced",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import json, os, subprocess, sys, tempfile, unittest.mock as mock\nsys.path.insert(0, 'src')\nreal_run = subprocess.run\nbase = tempfile.mkdtemp()\ndef git(cwd, *a):\n    r = subprocess.run(['git'] + list(a), cwd=cwd, capture_output=True, text=True)\n    assert r.returncode == 0, r.stderr\nup = os.path.join(base, 'upstream'); os.mkdir(up)\ngit(up, 'init', '-q', '-b', 'main')\nopen(os.path.join(up, 'app.py'), 'w').write('x = 1\\n')\ngit(up, 'add', '-A'); git(up, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init')\nrepo = os.path.join(base, 'repo'); git(base, 'clone', '-q', up, repo); git(repo, 'fetch', '-q', 'origin')\nimport lap\ndef patched_run(args, **k):\n    # lap.run's deploy timeout (120s) patched small so the repro is fast;\n    # the timeout path itself is real\n    if k.get('timeout') == 120:\n        return real_run(args, **{**k, 'timeout': 2})\n    return real_run(args, **k)\nresult_path = os.path.join(base, 'lap-result.json')\npatches = [\n    mock.patch.object(lap, 'PRODUCT_REPO', repo),\n    mock.patch.object(lap, 'CODE_PATHS', ['*.py']),\n    mock.patch.object(lap, 'DEPLOY_MODE', 'app'),\n    mock.patch.object(lap, 'EVIDENCE_DIR', os.path.join(base, 'evidence')),\n    mock.patch.object(lap, 'RESULT_PATH', result_path),\n    mock.patch.object(lap, 'HEARTBEAT_PATH', os.path.join(base, 'hb')),\n    mock.patch.object(lap, 'issue_data', lambda i: {'title': 't', 'body': 'Acceptance criteria:\\nfix'}),\n    mock.patch.object(lap, '_gh', lambda args: ''),\n    mock.patch.object(lap.agent, 'chat', lambda m, model, **k: {'content': json.dumps([{'file': 'app.py', 'find': 'x = 1', 'replace': 'x = 2'}]) if model == lap.IMPLEMENTER_MODEL else 'VERDICT: accept', 'finish_reason': 'stop', 'usage': {'buyer_cost_micro': 1000}}),\n    mock.patch.object(lap.merge, 'full_merge', lambda i, r, wt, ev: {'merged': True, 'pr': 1, 'merge_sha': 'abc'}),\n    mock.patch.object(lap.verify, 'verify_candidate', lambda c, p, s, issue=None: {'verdict': 'pass'}),\n    mock.patch.object(lap.deploy, 'build_deploy_script', lambda port, product_repo, pid_file: 'sleep 600'),\n    mock.patch.object(lap.deploy, 'identity_readback', lambda url, repo: {'match': True, 'head': 'x'}),\n    mock.patch('subprocess.run', patched_run),\n]\nfor p in patches: p.start()\ntry:\n    lap.run(21)\nfinally:\n    for p in reversed(patches): p.stop()\nresult = json.load(open(result_path))\nevdir = sorted(os.listdir(os.path.join(base, 'evidence')))[-1]\ntimeline = json.load(open(os.path.join(base, 'evidence', evdir, 'timeline.json')))\nevents = [e['event'] for e in timeline]\nhas_deploy_row = 'deploy' in events\nassert result['outcome'] != 'crash', 'RED: deploy timeout recorded outcome=crash: %s' % result\nassert result.get('gate') == 'deploy-timeout', 'RED: deploy timeout must be gate=deploy-timeout: %s' % result\nassert has_deploy_row, 'RED: no deploy event row recording the timeout: %s' % events\nprint('K14-RED-GREEN')"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K14-RED-GREEN"
+  }
+ ]
+}

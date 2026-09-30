@@ -1,0 +1,11 @@
+**Criterion 1 (oracle gates the repro):** PASS — the oracle lives deployment-side (`scenarios-dogfood/issue-14.json`, outside this checkout view by the provided-files contract, which excludes new files by design); the pre-existing `tests/test_scenarios.py` wires it explicitly: `"deploy-timeout-evidenced": 14` in `NAME_TO_ISSUE` and `DOGFOOD_ISSUES = {6, 12, 13, 14}`, so the issue-14 oracle exists and is gated for alignment. The diff itself implements the terminal behavior the oracle checks (explicit `gate="deploy-timeout"` outcome, not `"crash"`, with a `deploy` event row before `lap-end`).
+
+**Criterion 2 (non-timeout failure path unchanged):** PASS — post-apply `src/lap.py` retains `lap.event("deploy", rc=d.returncode, ...)` followed by `return finish(lap, "failure", gate="deploy", ...)` on `d.returncode != 0`; the timeout branch returns before this line, so the normal-failure path is byte-identical in behavior.
+
+**Criterion 3 (success path unchanged):** PASS — the diff only inserts the `TimeoutExpired` handling between `subprocess.run` and the existing `rc` check; `deploy → identity_readback → deploy-identity` and the green timeline are untouched.
+
+**Criterion 4 (in-repo regression test driving `lap.run`, must fail pre-fix):** FAIL — no such test exists in the provided `tests/`. `tests/test_lap_run.py::TestDeployModeApp` only drives the success path (`fake_script` returning `"echo deploy-ok"` and identity `{"match": True}`); no test anywhere in the checkout patches the deploy timeout small, exercises a hanging deploy script, asserts the distinct `deploy-timeout` outcome/gate, or asserts the timeout `deploy` event row in the timeline. This criterion demands a test that fails on pre-fix code; none is present, and the checkout view excludes adding one.
+
+The implementation change itself is sound (bytes-decode guard for `TimeoutExpired` output, tail capture, event-then-finish ordering consistent with the timeline contract), but the required regression test is absent, so the acceptance criteria are not fully met.
+
+VERDICT: reject

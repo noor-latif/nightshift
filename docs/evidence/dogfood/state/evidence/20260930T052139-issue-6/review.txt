@@ -1,0 +1,5 @@
+**Criterion 1 (anchor-exists / transcription-park guard):** PASS — the diff's find block anchors (`state["started_at"] = now`, `deps["start_lap"](claim["issue"], state["lap"])`, `save_state(state, deps["state_path"])`) exist verbatim on the candidate/main dispatch region, and the disposition line reads exactly `state["issues"][str(claim["issue"])]["disposition"] = "merged"` (no space) in the current `src/supervisor.py`. No standalone repro file is added; the repro lives inside `tests/test_supervisor.py` as the contract requires.
+
+**Criterion 2 (tick-error row unchanged):** PASS — the diff touches only `dispatch()`; `main()`'s `runtime_log("tick-error", error=repr(e), traceback=...)` block is intact in the candidate state.
+
+**Criterion 3 (save_state failure convergence):** PASS — the `except` block wraps `start_lap`/`runtime_log`/`save_state` in `dispatch()`: on failure it kills a started child (`deps["kill_lap"]` if `state["lap"].get("pid")`), sets `

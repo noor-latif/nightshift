@@ -1,0 +1,44 @@
+[
+ {
+  "index": 0,
+  "file": "src/lap.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 1,
+  "file": "src/lap.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 2,
+  "file": "src/lap.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 3,
+  "file": "src/selector.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 4,
+  "file": "src/selector.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 5,
+  "file": "src/supervisor.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 6,
+  "file": "src/supervisor.py",
+  "anchor_count": 1,
+  "applied": true
+ }
+]

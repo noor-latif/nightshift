@@ -1,0 +1,12 @@
+[
+  {
+    "file": "src/supervisor.py",
+    "find": "        try:\n            claim = read_claim(path)\n        except Exception:\n            dead.append((path, {\"issue\": None}))\n            continue\n        issue = claim.get(\"issue\")",
+    "replace": "        try:\n            claim = read_claim(path)\n        except Exception:\n            # A torn claim still carries its issue identity in the canonical\n            # filename. Recover it so the normal crash-accounting path runs.\n            try:\n                issue = int(name[len(\"issue-\"):-len(\".json\")])\n            except ValueError:\n                issue = None\n            claim = {\"issue\": issue}\n            if issue is None:\n                runtime_log(\"intervention\",\n                            detail=\"UNATTRIBUTABLE orphan claim reaped: filename has no issue number: %s\"\n                                   % path,\n                            claim=path)\n                dead.append((path, claim))\n                continue\n        issue = claim.get(\"issue\")"
+  },
+  {
+    "file": "tests/test_supervisor.py",
+    "find": "    def test_unparseable_claim_reaped(self):\n        path = os.path.join(self.claims, \"issue-5.json\")\n        with open(path, \"w\") as f:\n            f.write(\"not json\")\n        dead = self.run_reconcile({\"issues\": {}})\n        self.assertEqual(len(dead), 1)\n        self.assertEqual(dead[0][1][\"issue\"], None)",
+    "replace": "    def test_unparseable_claim_reaped_and_accounted_from_filename(self):\n        path = os.path.join(self.claims, \"issue-5.json\")\n        with open(path, \"w\") as f:\n            f.write(\"not json\")\n        state = {\"issues\": {}}\n        dead = self.run_reconcile(state)\n        self.assertEqual(len(dead), 1)\n        self.assertEqual(dead[0][0], path)\n        self.assertEqual(dead[0][1][\"issue\"], 5)\n        self.assertEqual(state[\"issues\"][\"5\"][\"retries\"], 1)\n        self.assertEqual(state[\"issues\"][\"5\"][\"disposition\"], \"retry\")\n        with open(self.log) as f:\n            rows = [json.loads(line) for line in f]\n        self.assertEqual(rows[-1][\"event\"], \"intervention\")\n        self.assertEqual(rows[-1][\"issue\"], 5)\n        self.assertIn(\"crash counted at reap\", rows[-1][\"detail\"])"
+  }
+]

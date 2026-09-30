@@ -1,0 +1,37 @@
+[
+ {
+  "file": "src/lap.py",
+  "find": "    def set_result(self, outcome, error=None):\n        os.makedirs(os.path.dirname(RESULT_PATH) or \".\", exist_ok=True)\n        row = {\"issue\": self.issue, \"outcome\": outcome, \"run_id\": self.run_id}\n        if error:\n            row[\"error\"] = str(error)\n        tmp = RESULT_PATH + \".tmp\"\n        with open(tmp, \"w\") as f:\n            json.dump(row, f)\n        os.replace(tmp, RESULT_PATH)",
+  "replace": "    def set_result(self, outcome, error=None, gate=None):\n        os.makedirs(os.path.dirname(RESULT_PATH) or \".\", exist_ok=True)\n        row = {\"issue\": self.issue, \"outcome\": outcome, \"run_id\": self.run_id}\n        if gate:\n            row[\"gate\"] = gate\n        if error:\n            row[\"error\"] = str(error)\n        tmp = RESULT_PATH + \".tmp\"\n        with open(tmp, \"w\") as f:\n            json.dump(row, f)\n        os.replace(tmp, RESULT_PATH)"
+ },
+ {
+  "file": "src/lap.py",
+  "find": "def finish(lap, outcome, gate=None, error=None, caught=None):\n    \"\"\"Terminal lap state: verdict evidence + result file for the supervisor.\"\"\"\n    verdict = {\"verdict\": \"pass\" if outcome == \"success\" else \"fail\", \"outcome\": outcome}\n    if gate:\n        verdict[\"gate\"] = gate\n    if caught:\n        # model claimed work that a gate killed \u2014 factory winning (L-000)\n        verdict[\"caught_confabulation\"] = caught\n    if error is not None:\n        verdict[\"error\"] = error if isinstance(error, str) else json.dumps(error, default=str)\n    lap._dump(\"verdict.json\", verdict)\n    lap.set_result(outcome, error=verdict.get(\"error\"))\n    lap.event(\"lap-end\", outcome=outcome, gate=gate)",
+  "replace": "def finish(lap, outcome, gate=None, error=None, caught=None):\n    \"\"\"Terminal lap state: verdict evidence + result file for the supervisor.\"\"\"\n    verdict = {\"verdict\": \"pass\" if outcome in (\"success\", \"success-close-failed\") else \"fail\", \"outcome\": outcome}\n    if gate:\n        verdict[\"gate\"] = gate\n    if caught:\n        # model claimed work that a gate killed \u2014 factory winning (L-000)\n        verdict[\"caught_confabulation\"] = caught\n    if error is not None:\n        verdict[\"error\"] = error if isinstance(error, str) else json.dumps(error, default=str)\n    lap._dump(\"verdict.json\", verdict)\n    lap.set_result(outcome, error=verdict.get(\"error\"), gate=gate)\n    lap.event(\"lap-end\", outcome=outcome, gate=gate)"
+ },
+ {
+  "file": "src/lap.py",
+  "find": "        _gh([\"issue\", \"close\", str(issue), \"--comment\",\n             \"Merged and deployed by nightshift lap %s (PR: %s)\" % (lap.run_id, m.get(\"pr\"))])\n        lap.event(\"issue-closed\")\n        finish(lap, \"success\")",
+  "replace": "        try:\n            _gh([\"issue\", \"close\", str(issue), \"--comment\",\n                 \"Merged and deployed by nightshift lap %s (PR: %s)\" % (lap.run_id, m.get(\"pr\"))])\n        except Exception as e:\n            close_error = \"%s: %s\" % (type(e).__name__, e)\n            lap.event(\"issue-close-failed\", error=close_error)\n            return finish(lap, \"success-close-failed\", gate=\"issue-close\",\n                          error=close_error)\n        lap.event(\"issue-closed\")\n        finish(lap, \"success\")"
+ },
+ {
+  "file": "src/selector.py",
+  "find": "OUTCOMES = (\"success\", \"failure\", \"timeout\", \"crash\", \"queue-empty\",\n            \"apply_incomplete\")",
+  "replace": "OUTCOMES = (\"success\", \"success-close-failed\", \"failure\", \"timeout\", \"crash\", \"queue-empty\",\n            \"apply_incomplete\")"
+ },
+ {
+  "file": "src/selector.py",
+  "find": "    if outcome == \"success\":\n        rec[\"disposition\"] = \"merged\"\n        return \"merged\"",
+  "replace": "    if outcome in (\"success\", \"success-close-failed\"):\n        rec[\"disposition\"] = \"merged\"\n        return \"merged\""
+ },
+ {
+  "file": "src/supervisor.py",
+  "find": "    if outcome == \"success\":\n        notify_fn(\"lap issue %d: GREEN\" % issue)\n    else:\n        notify_fn(\"lap issue %d: %s (%s)\" % (issue, outcome.upper(), disposition))",
+  "replace": "    if outcome == \"success\":\n        notify_fn(\"lap issue %d: GREEN\" % issue)\n    elif outcome == \"success-close-failed\":\n        notify_fn(\"lap issue %d: GREEN (issue close failed)\" % issue)\n    else:\n        notify_fn(\"lap issue %d: %s (%s)\" % (issue, outcome.upper(), disposition))"
+ },
+ {
+  "file": "src/supervisor.py",
+  "find": "        if r.get(\"issue\") != lap[\"issue\"] or r.get(\"outcome\") not in OUTCOMES:\n            return \"crash\"\n        return r[\"outcome\"]",
+  "replace": "        if r.get(\"issue\") != lap[\"issue\"] or r.get(\"outcome\") not in OUTCOMES:\n            return \"crash\"\n        lap[\"gate\"] = r.get(\"gate\")\n        return r[\"outcome\"]"
+ }
+]
