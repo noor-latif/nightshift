@@ -242,12 +242,42 @@ class TestAddCostRows(unittest.TestCase):
 
     def test_null_usage_summed_alongside_real_rows(self):
         l, cost_path = self.lap_with_tmp_evidence()
-        l.add_cost({"buyer_cost_micro": 1_500_000}, "implementer")
-        l.add_cost(None, "reviewer")
+        with unittest.mock.patch.object(lap, "COST_CEILING_USD", 10.0):
+            l.add_cost({"buyer_cost_micro": 1_500_000}, "implementer")
+            l.add_cost(None, "reviewer")
         with open(cost_path) as f:
             data = json.load(f)
         self.assertEqual(len(data["calls"]), 2)  # per-call count assertable
         self.assertEqual(data["total_usd"], 1.5)
+
+
+class TestCostCeilingGate(unittest.TestCase):
+    """G7: COST_CEILING_USD was a dead constant — the whitepaper's '$0.01
+    ceiling' never ran. Exceeding it must end the lap gate='cost' with a
+    verdict.json, not continue silently."""
+
+    def test_ceiling_exceeded_lap_fails_gate_cost(self):
+        with FakeLapEnv("none") as env:
+            # fake implementer call costs 1000 micro = $0.001; a $0.0005
+            # ceiling is exceeded on the first add_cost
+            with unittest.mock.patch.object(lap, "COST_CEILING_USD", 0.0005):
+                lap.run(FakeLapEnv.ISSUE)
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            result = json.load(f)
+        self.assertEqual(result["outcome"], "failure")
+        self.assertIn("exceeds ceiling", result["error"])
+        run_ids = sorted(os.listdir(os.path.join(env.base, "evidence")))
+        with open(os.path.join(env.base, "evidence", run_ids[-1], "verdict.json")) as f:
+            verdict = json.load(f)
+        self.assertEqual(verdict["gate"], "cost")
+        self.assertEqual(verdict["verdict"], "fail")
+
+    def test_ceiling_not_reached_lap_succeeds(self):
+        # the default $0.01 ceiling vs one $0.001 call: no gate trip
+        with FakeLapEnv("none") as env:
+            lap.run(FakeLapEnv.ISSUE)
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            self.assertEqual(json.load(f)["outcome"], "success")
 
 
 def _patch_lap_worktree(wt):

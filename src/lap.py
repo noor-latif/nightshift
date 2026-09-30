@@ -33,6 +33,7 @@ import verify
 from settings import (
     CHECKOUT_CHAR_BUDGET,
     CODE_PATHS,
+    COST_CEILING_USD,
     DEPLOY_MODE,
     EVIDENCE_DIR,
     GITHUB_REPO,
@@ -54,6 +55,10 @@ REVIEWER_MAX_TOKENS = max(4096, MIN_MAX_TOKENS)
 
 
 class LapTimeout(Exception):
+    pass
+
+
+class CostCeilingExceeded(Exception):
     pass
 
 
@@ -317,19 +322,27 @@ class Lap:
         published cost tables. Falsy usage (gateway sent no usage chunk)
         records usage=None, buyer_cost_micro=0, missing_usage=true — the
         row's existence proves the call happened; per-call count is
-        assertable."""
+        assertable. Raises CostCeilingExceeded (caught by run() →
+        gate='cost' lap failure) once the cumulative total passes
+        COST_CEILING_USD — the whitepaper's ceiling is a real runtime
+        gate, not a dead constant."""
         if usage:
             self.costs.append({"role": role, "usage": usage})
         else:
             self.costs.append({"role": role, "usage": None,
                                 "buyer_cost_micro": 0, "missing_usage": True})
+        total_usd = sum((c["usage"] or {}).get("buyer_cost_micro") or 0
+                        for c in self.costs) / 1e6
         self._dump("cost.json", {
             "calls": self.costs,
             # buyer_cost_micro is the truthful field (exact vs order book);
             # usage.cost reads ~15% low (luna-qualify probe 3)
-            "total_usd": sum((c["usage"] or {}).get("buyer_cost_micro") or 0
-                             for c in self.costs) / 1e6,
+            "total_usd": total_usd,
         })
+        if total_usd > COST_CEILING_USD:
+            raise CostCeilingExceeded(
+                "cumulative %f USD exceeds ceiling %f USD"
+                % (total_usd, COST_CEILING_USD))
 
     def heartbeat_loop(self):
         os.makedirs(os.path.dirname(HEARTBEAT_PATH) or ".", exist_ok=True)
@@ -486,6 +499,8 @@ def run(issue):
              "Merged and deployed by nightshift lap %s (PR: %s)" % (lap.run_id, m.get("pr"))])
         lap.event("issue-closed")
         finish(lap, "success")
+    except CostCeilingExceeded as e:
+        finish(lap, "failure", gate="cost", error=str(e))
     except agent.PermanentError as e:
         finish(lap, "failure", gate="gateway", error="permanent: %s" % e)
     except agent.TransientError as e:

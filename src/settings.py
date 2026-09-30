@@ -30,7 +30,7 @@ NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 NTFY_URL = ("https://ntfy.sh/" + NTFY_TOPIC) if NTFY_TOPIC else ""
 LAP_WALLCLOCK_LIMIT_S = 10800
 SESSION_WALLCLOCK_LIMIT_S = 14400  # session backstop ≥ per-lap: luna lap ≈ 3×16min + review/verify
-COST_CEILING_USD = 0.01
+COST_CEILING_USD = 0.01  # enforced at lap level (G7): add_cost raises past this; run() → finish(gate="cost")
 HEARTBEAT_PATH = "state/heartbeat"  # relative to the supervisor cwd
 HEARTBEAT_TTL_S = 120  # ponytail: fixed TTL; tune on nixlab once real lap cadence is known
 CLAIMS_DIR = "claims"
