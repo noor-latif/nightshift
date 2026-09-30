@@ -313,15 +313,23 @@ class Lap:
             raise LapTimeout("wall-clock budget %.0fs exceeded" % LAP_WALLCLOCK_LIMIT_S)
 
     def add_cost(self, usage, role):
+        """One row per call, always: a dropped row silently undercounts
+        published cost tables. Falsy usage (gateway sent no usage chunk)
+        records usage=None, buyer_cost_micro=0, missing_usage=true — the
+        row's existence proves the call happened; per-call count is
+        assertable."""
         if usage:
             self.costs.append({"role": role, "usage": usage})
-            self._dump("cost.json", {
-                "calls": self.costs,
-                # buyer_cost_micro is the truthful field (exact vs order book);
-                # usage.cost reads ~15% low (luna-qualify probe 3)
-                "total_usd": sum((c["usage"].get("buyer_cost_micro") or 0) / 1e6
-                                 for c in self.costs),
-            })
+        else:
+            self.costs.append({"role": role, "usage": None,
+                                "buyer_cost_micro": 0, "missing_usage": True})
+        self._dump("cost.json", {
+            "calls": self.costs,
+            # buyer_cost_micro is the truthful field (exact vs order book);
+            # usage.cost reads ~15% low (luna-qualify probe 3)
+            "total_usd": sum((c["usage"] or {}).get("buyer_cost_micro") or 0
+                             for c in self.costs) / 1e6,
+        })
 
     def heartbeat_loop(self):
         os.makedirs(os.path.dirname(HEARTBEAT_PATH) or ".", exist_ok=True)

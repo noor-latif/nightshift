@@ -216,6 +216,40 @@ class TestScenariosDirWiring(unittest.TestCase):
                          os.path.normpath(settings.SCENARIOS_DIR))
 
 
+class TestAddCostRows(unittest.TestCase):
+    """G3 (audit #3): a call with no usage data must still cost a row —
+    'if usage:' silently dropped it and published cost tables undercounted."""
+
+    def lap_with_tmp_evidence(self):
+        tmp = tempfile.mkdtemp()
+        with unittest.mock.patch.object(lap, "EVIDENCE_DIR",
+                                        os.path.join(tmp, "evidence")):
+            l = lap.Lap(31)
+        return l, os.path.join(l.evdir, "cost.json")
+
+    def test_falsy_usage_appends_row_with_missing_usage(self):
+        l, cost_path = self.lap_with_tmp_evidence()
+        l.add_cost(None, "implementer")
+        with open(cost_path) as f:
+            data = json.load(f)
+        self.assertEqual(len(data["calls"]), 1)
+        row = data["calls"][0]
+        self.assertEqual(row["role"], "implementer")
+        self.assertIsNone(row["usage"])
+        self.assertEqual(row["buyer_cost_micro"], 0)
+        self.assertTrue(row["missing_usage"])
+        self.assertEqual(data["total_usd"], 0)
+
+    def test_null_usage_summed_alongside_real_rows(self):
+        l, cost_path = self.lap_with_tmp_evidence()
+        l.add_cost({"buyer_cost_micro": 1_500_000}, "implementer")
+        l.add_cost(None, "reviewer")
+        with open(cost_path) as f:
+            data = json.load(f)
+        self.assertEqual(len(data["calls"]), 2)  # per-call count assertable
+        self.assertEqual(data["total_usd"], 1.5)
+
+
 def _patch_lap_worktree(wt):
     import lap as lapmod
     return unittest.mock.patch.object(lapmod, "worktree_for",
