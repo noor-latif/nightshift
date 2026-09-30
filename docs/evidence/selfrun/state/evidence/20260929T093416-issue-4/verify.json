@@ -1,0 +1,43 @@
+{
+ "unit": {
+  "status": "pass",
+  "output": "......................~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/test_lap_mutations.py:104: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3z0_i5bw/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 1\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/test_lap_mutations.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpet4rptzt/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 2\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/test_lap_mutations.py:140: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3iaflhnq/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(),\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n..~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/test_lap_mutations.py:158: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpyjusl5yw/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 1\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/test_lap_mutations.py:132: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp1gt_jfz6/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 9\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/test_lap_mutations.py:124: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp9k_zsk35/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 3   \\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n....................Exception ignored while calling deallocator <function _TemporaryFileCloser.__del__ at 0x7f2f35485b10>:\nTraceback (most recent call last):\n  File \"/usr/lib/python3.14/tempfile.py\", line 482, in __del__\n    self.cleanup()\n  File \"/usr/lib/python3.14/tempfile.py\", line 461, in cleanup\n    self.file.close()\nAttributeError: 'Err' object has no attribute 'close'\nException ignored while calling deallocator <function _TemporaryFileCloser.__del__ at 0x7f2f35485b10>:\nTraceback (most recent call last):\n  File \"/usr/lib/python3.14/tempfile.py\", line 482, in __del__\n    self.cleanup()\n  File \"/usr/lib/python3.14/tempfile.py\", line 461, in cleanup\n    self.file.close()\nAttributeError: 'Err' object has no attribute 'close'\n.............................................notify failed: <urlopen error ntfy down>\n...notify failed: <urlopen error ntfy down>\n.........../usr/lib/python3.14/unittest/case.py:725: DeprecationWarning: It is deprecated to return a value that is not None from a test case (<bound method TestReconcileDeadClaims.test_other_issue_orphan_still_counted_while_lap_live of <test_supervisor.TestReconcileDeadClaims testMethod=test_other_issue_orphan_still_counted_while_lap_live>> returned 'list')\n  return self.run(*args, **kwds)\n....................../usr/lib/python3.14/unittest/case.py:615: ResourceWarning: unclosed <socket.socket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 46875)>\n  result = method()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n......~/factory-lab/nightshift/.factory/worktrees/agent-issue-4/tests/../src/verify.py:304: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpeagjtaut/mixed.pid.log' mode='w' encoding='UTF-8'>\n  boot_candidate(boot_dir, port, pid_file)\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 485469 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n......./usr/lib/python3.14/unittest/case.py:615: ResourceWarning: unclosed <socket.socket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 42981)>\n  result = method()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n..............\n----------------------------------------------------------------------\nRan 158 tests in 4.927s\n\nOK\n<sys>:0: ResourceWarning: unclosed <socket.socket fd=3, family=2, type=1, proto=0, laddr=('127.0.0.1', 45951)>\n<sys>:0: ResourceWarning: unclosed <socket.socket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 35527)>\n<sys>:0: ResourceWarning: unclosed <socket.socket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 40857)>\n"
+ },
+ "scenarios": [
+  {
+   "scenario": "verify-hold-captured",
+   "checks": [
+    {
+     "assertion": "exec python3 -c import json, os, socket, subprocess, sys, tempfile\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\ntmp = tempfile.mkdtemp()\nopen(os.path.join(tmp, 'a_test.py'), 'w').write('import unittest\\nclass T(unittest.TestCase):\\n    def test_x(self): pass\\n')\nfor a in (['git', 'init', '-q'], ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init', '--allow-empty']):\n    subprocess.run(a, cwd=tmp, capture_output=True)\nsd = tempfile.mkdtemp()\nwith open(os.path.join(sd, 'global.json'), 'w') as f:\n    json.dump({'name': 'boot', 'assertions': [{'method': 'GET', 'url': 'http://127.0.0.1:{{port}}/health', 'expected_status': 200}]}, f)\nsocks = []\nfor p in range(8900, 8912):\n    s = socket.socket()\n    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n    s.bind(('127.0.0.1', p))\n    s.listen(1)\n    socks.append(s)\ntry:\n    ev = verify.verify_candidate(tmp, '/tmp/probe-hold.pid', sd, issue=None)\nexcept Exception as e:\n    print('ESCAPES verify_candidate as:', type(e).__name__, e)\n    raise SystemExit(1)\nassert isinstance(ev, dict) and ev.get('verdict') == 'HOLD', ev\nprint('K4-RED-GREEN')\n",
+     "expected_exit": 0,
+     "observed_exit": 0,
+     "expected_fragment": "K4-RED-GREEN",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "exec python3 -c import os, sys\nos.environ['FACTORY_RUNTIME_CANDIDATE'] = 'x'\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\nsc = {'name': 'leak', 'assertions': [{'method': 'GET', 'url': 'http://127.0.0.1:{{port}}/health', 'expected_status': 200}]}\nr = verify.run_scenario(sc, os.getcwd(), '/tmp/unused.pid')\nassert r['verdict'] == 'hold', r\nprint('K4-C2-GREEN')\n",
+     "expected_exit": 0,
+     "observed_exit": 0,
+     "expected_fragment": "K4-C2-GREEN",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "exec python3 -c import json, os, subprocess, sys, tempfile\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\ntmp = tempfile.mkdtemp()\nopen(os.path.join(tmp, 'a_test.py'), 'w').write('import unittest\\nclass T(unittest.TestCase):\\n    def test_x(self): assert 0\\n')\nfor a in (['git', 'init', '-q'], ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init', '--allow-empty']):\n    subprocess.run(a, cwd=tmp, capture_output=True)\nsd = tempfile.mkdtemp()\nev = verify.verify_candidate(tmp, '/tmp/probe-fail.pid', sd, issue=None)\nassert ev['verdict'] == 'fail', ev['verdict']\nprint('K4-C3-GREEN')\n",
+     "expected_exit": 0,
+     "observed_exit": 0,
+     "expected_fragment": "K4-C3-GREEN",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  }
+ ],
+ "provenance": {
+  "status": "skip",
+  "detail": "DEPLOY_MODE=none"
+ },
+ "verdict": "pass"
+}

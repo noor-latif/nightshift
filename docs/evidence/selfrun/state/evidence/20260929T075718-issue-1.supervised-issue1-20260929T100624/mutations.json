@@ -1,0 +1,26 @@
+[
+ {
+  "index": 0,
+  "file": "src/selector.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 1,
+  "file": "tests/test_deploy.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 2,
+  "file": "tests/test_deploy.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 3,
+  "file": "tests/test_deploy.py",
+  "anchor_count": 1,
+  "applied": true
+ }
+]

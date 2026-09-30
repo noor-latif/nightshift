@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-25T10:13:08Z",
+  "event": "lap-start",
+  "issue": 6,
+  "run_id": "20260925T101308-issue-6"
+ },
+ {
+  "ts": "2026-09-25T10:13:09Z",
+  "event": "claimed",
+  "title": "Add GET /paste/<unknown-id> JSON error body"
+ },
+ {
+  "ts": "2026-09-25T10:13:42Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 2151
+ },
+ {
+  "ts": "2026-09-25T10:13:42Z",
+  "event": "diff-apply",
+  "ok": true,
+  "detail": "applied"
+ },
+ {
+  "ts": "2026-09-25T10:13:55Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "review"
+ }
+]

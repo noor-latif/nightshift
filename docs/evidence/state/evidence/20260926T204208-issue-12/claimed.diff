@@ -1,0 +1,37 @@
+--- a/app.py
++++ b/app.py
+@@ -1,4 +1,4 @@
+-"""Pastebin micro-service: create a paste, read it back, health check.
++"""Pastebin micro-service: create, read, and delete pastes, plus health check.
+ 
+ Single process, in-memory storage, Python stdlib only. Serves 127.0.0.1 on the
+ port given by FACTORY_PORT (default 8642). Storage is in-memory by design:
+@@ -29,6 +29,9 @@ class PasteStore:
+     def get(self, paste_id: str) -> str | None:
+         return self._pastes.get(paste_id)
+ 
++    def delete(self, paste_id: str) -> bool:
++        return self._pastes.pop(paste_id, None) is not None
++
+ 
+ class PasteHandler(BaseHTTPRequestHandler):
+     store: PasteStore
+@@ -57,6 +60,17 @@ class PasteHandler(BaseHTTPRequestHandler):
+             self._send_json(201, {"id": self.store.create(content)})
+ 
++    def do_DELETE(self) -> None:
++        path = urllib.parse.urlsplit(self.path).path
++        if not path.startswith("/paste/"):
++            self._not_found()
++            return
++        paste_id = path[len("/paste/"):]
++        if not self.store.delete(paste_id):
++            self._not_found()
++            return
++        self.send_response(204)
++        self.send_header("Content-Length", "0")
++        self.end_headers()
++
+     def _read_body(self) -> str:
+         length = int(self.headers.get("Content-Length") or 0)
+         return self.rfile.read(length).decode("utf-8")

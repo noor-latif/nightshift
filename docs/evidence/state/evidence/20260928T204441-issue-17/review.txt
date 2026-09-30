@@ -1,0 +1,13 @@
+**Criterion 1: POST /paste?x=1 returns 201 — FAIL**
+The diff uses `urllib.parse.urlsplit` but adds no `import urllib.parse` anywhere. If it wasn't already imported at the top of `app.py` (not visible in this diff), `do_POST` raises `NameError` on every request, so no 201 is ever returned. Even if the import exists, the diff alone provides no evidence either way.
+
+**Criterion 2: GET /paste/<id>?v=1 returns 200 — PASS**
+The diff touches only `do_POST`; `do_GET` is untouched, so GET behavior (including any existing query-string handling) is unchanged by this change.
+
+**Criterion 3: non-JSON body returns 400 — PASS**
+The Content-Length/body-validation logic below the changed line is untouched; the change only affects the path check, so the existing 400 path is preserved.
+
+**Criterion 4: Existing tests pass — FAIL**
+Cannot be verified from the diff, and Criterion 1's import concern means any POST test would crash with `NameError` if `urllib.parse` is not already imported. No evidence in the diff supports this criterion.
+
+VERDICT: reject

@@ -1,0 +1,14 @@
+diff --git a/app.py b/app.py
+index 8b38e64..8f388be 100644
+--- a/app.py
++++ b/app.py
+@@ -69,6 +69,9 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if not isinstance(content, str):
+             self._send_json(400, {"error": "'content' must be a string"})
+             return
++        if content == "":
++            self._send_json(400, {"error": "'content' must be a non-empty string"})
++            return
+         self._send_json(201, {"id": self.store.create(content)})
+ 
+     def _read_body(self) -> str:

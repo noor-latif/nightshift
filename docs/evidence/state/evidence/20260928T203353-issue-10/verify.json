@@ -1,0 +1,114 @@
+{
+ "unit": {
+  "status": "pass",
+  "output": "127.0.0.1 - - [28/Sep/2026 22:36:29] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:29] \"GET /paste/t0HJ_8oB0zQ HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:30] \"GET /paste HTTP/1.1\" 404 -\n/usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 404: 'Not Found'>\n  _warnings.warn(self.warn_message, ResourceWarning)\n.127.0.0.1 - - [28/Sep/2026 22:36:30] \"GET /health HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:31] \"GET /health HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:31] \"POST /paste HTTP/1.1\" 400 -\n/usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 400: 'Bad Request'>\n  _warnings.warn(self.warn_message, ResourceWarning)\n.127.0.0.1 - - [28/Sep/2026 22:36:32] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [28/Sep/2026 22:36:32] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [28/Sep/2026 22:36:33] \"POST /paste HTTP/1.1\" 201 -\n.127.0.0.1 - - [28/Sep/2026 22:36:33] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:33] \"GET /health HTTP/1.1\" 200 -\n127.0.0.1 - - [28/Sep/2026 22:36:33] \"GET /paste/qjvget8jHxs HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:34] \"POST /paste HTTP/1.1\" 411 -\n127.0.0.1 - - [28/Sep/2026 22:36:34] \"POST /paste HTTP/1.1\" 411 -\n.127.0.0.1 - - [28/Sep/2026 22:36:34] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:34] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:34] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:34] \"GET /paste/tSzyxlwrHUs HTTP/1.1\" 200 -\n127.0.0.1 - - [28/Sep/2026 22:36:34] \"GET /paste/LiZEaZ0MBxM HTTP/1.1\" 200 -\n127.0.0.1 - - [28/Sep/2026 22:36:34] \"GET /paste/dQ1ZePTsufc HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:35] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:35] \"GET /paste/lItQL0r-4po HTTP/1.1\" 404 -\n/usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 404: 'Not Found'>\n  _warnings.warn(self.warn_message, ResourceWarning)\n.127.0.0.1 - - [28/Sep/2026 22:36:36] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:36] \"GET /paste/0p2xYDMEdr4 HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:36] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:36] \"GET /paste/FV2XD989rUc HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:37] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:37] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:37] \"GET /paste/cwkXYBBDCVo HTTP/1.1\" 200 -\n127.0.0.1 - - [28/Sep/2026 22:36:37] \"GET /paste/3olXcUFwo3A HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:37] code 501, message Unsupported method ('PUT')\n127.0.0.1 - - [28/Sep/2026 22:36:37] \"PUT /paste/whatever HTTP/1.1\" 501 -\n/usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 501: \"Unsupported method ('PUT')\">\n  _warnings.warn(self.warn_message, ResourceWarning)\n127.0.0.1 - - [28/Sep/2026 22:36:37] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:37] \"GET /paste/m1k4XXweYmU HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:38] \"GET /paste/does-not-exist-123 HTTP/1.1\" 404 -\n.127.0.0.1 - - [28/Sep/2026 22:36:38] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:38] \"GET /paste/O2XEcKMZfeQ?v=1 HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:39] \"GET /health?x=1 HTTP/1.1\" 200 -\n.127.0.0.1 - - [28/Sep/2026 22:36:39] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [28/Sep/2026 22:36:39] \"GET /paste/WnZGjRnoA0k HTTP/1.1\" 200 -\n127.0.0.1 - - [28/Sep/2026 22:36:39] \"GET /paste HTTP/1.1\" 404 -\n/usr/lib/python3.14/tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 404: 'Not Found'>\n  _warnings.warn(self.warn_message, ResourceWarning)\n127.0.0.1 - - [28/Sep/2026 22:36:39] \"GET /paste/ HTTP/1.1\" 404 -\n.127.0.0.1 - - [28/Sep/2026 22:36:40] \"GET /paste/nope-123?v=1 HTTP/1.1\" 404 -\n.\n----------------------------------------------------------------------\nRan 21 tests in 11.053s\n\nOK\n"
+ },
+ "scenarios": [
+  {
+   "scenario": "issue-10-content-length-required",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 411,
+     "observed_status": 411,
+     "expected_fragment": "Content-Length required",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 201,
+     "observed_status": 201,
+     "expected_fragment": "id",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/health",
+     "expected_status": 200,
+     "observed_status": 200,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "paste-round-trip",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 201,
+     "observed_status": 201,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/vrgvCaEv3ak",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "hello factory",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "malformed-body-400",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 400,
+     "observed_status": 400,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "nonstring-content-400",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 400,
+     "observed_status": 400,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "unknown-id-404",
+   "checks": [
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/does-not-exist",
+     "expected_status": 404,
+     "observed_status": 404,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "health-revision",
+   "checks": [
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/health",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "7452a8977384dfadb8bcc1ebc8c93d72d3fea544",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  }
+ ],
+ "provenance": {
+  "status": "pass",
+  "detail": {
+   "reported": "7452a8977384dfadb8bcc1ebc8c93d72d3fea544",
+   "head": "7452a8977384dfadb8bcc1ebc8c93d72d3fea544"
+  }
+ },
+ "verdict": "pass"
+}

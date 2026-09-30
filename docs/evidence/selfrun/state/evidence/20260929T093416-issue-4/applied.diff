@@ -1,0 +1,92 @@
+diff --git a/src/verify.py b/src/verify.py
+index d70fa85..7563707 100644
+--- a/src/verify.py
++++ b/src/verify.py
+@@ -343,7 +343,18 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None):
+             data = json.load(f)
+         # a file may hold one scenario or a list of scenarios
+         for scenario in (data if isinstance(data, list) else [data]):
+-            evidence["scenarios"].append(run_scenario(scenario, checkout_cwd, pid_file))
++            try:
++                result = run_scenario(scenario, checkout_cwd, pid_file)
++            except Hold as e:
++                # Harness/resource unavailability is a HOLD, never a lap crash.
++                result = {
++                    "scenario": scenario.get("name", "unnamed"),
++                    "checks": [{"assertion": "scenario", "status": "HOLD",
++                                "detail": str(e)}],
++                    "verdict": "hold",
++                }
++            evidence["scenarios"].append(result)
++
+     # provenance uses the health check already captured by the scenario runner.
+     # DEPLOY_MODE="none" (library repos) has no bootable candidate and no
+     # live rig: there is nothing to compare identity against — skipped, and
+diff --git a/tests/test_verify.py b/tests/test_verify.py
+index 0621cf9..eee520f 100644
+--- a/tests/test_verify.py
++++ b/tests/test_verify.py
+@@ -1,8 +1,10 @@
+ import json
+ import os
++import socket
+ import sys
+ import tempfile
+ import threading
++
+ import unittest
+ from http.server import BaseHTTPRequestHandler, HTTPServer
+ 
+@@ -411,7 +413,52 @@ class TestNoGitBoot(unittest.TestCase):
+         finally:
+             server.shutdown()
+ 
++class TestVerifyScenarioHold(unittest.TestCase):
++    def test_exhausted_scenario_port_range_returns_hold(self):
++        # Bind and listen on every port in a contiguous scenario range so
++        # free_port() raises Hold while the scenario ladder is running.
++        sockets = []
++        start = None
++        for candidate in range(30000, 60000):
++            trial = []
++            try:
++                for port in range(candidate, candidate + 11):
++                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
++                    sock.bind(("127.0.0.1", port))
++                    sock.listen(1)
++                    trial.append(sock)
++            except OSError:
++                for sock in trial:
++                    sock.close()
++                continue
++            sockets = trial
++            start = candidate
++            break
++        self.assertIsNotNone(start, "could not reserve a contiguous 11-port range")
++        try:
++            tmp = tempfile.mkdtemp()
++            scenarios = tempfile.mkdtemp()
++            with open(os.path.join(scenarios, "global.json"), "w") as f:
++                json.dump({"name": "needs-boot", "assertions": [{
++                    "method": "GET",
++                    "url": "http://127.0.0.1:{{port}}/health",
++                    "expected_status": 200,
++                }]}, f)
++            from unittest import mock
++            with mock.patch.object(verify, "SCENARIO_PORT_RANGE", (start, start + 11)), \
++                 mock.patch.object(verify, "DEPLOY_MODE", "none"), \
++                 mock.patch.object(verify, "run_unit_tests", return_value=(True, "Ran 1 test")):
++                evidence = verify.verify_candidate(tmp, os.path.join(tmp, "candidate.pid"),
++                                                   scenarios)
++            self.assertEqual(evidence["verdict"], "HOLD")
++            self.assertEqual(evidence["scenarios"][0]["verdict"], "hold")
++        finally:
++            for sock in sockets:
++                sock.close()
++
++
+ class TestScenarioSelection(unittest.TestCase):
++
+     """issue-<n>.json runs only for its issue; global files always run."""
+ 
+     def setUp(self):

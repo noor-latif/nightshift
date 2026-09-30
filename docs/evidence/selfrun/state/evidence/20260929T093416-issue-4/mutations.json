@@ -1,0 +1,20 @@
+[
+ {
+  "index": 0,
+  "file": "src/verify.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 1,
+  "file": "tests/test_verify.py",
+  "anchor_count": 1,
+  "applied": true
+ },
+ {
+  "index": 2,
+  "file": "tests/test_verify.py",
+  "anchor_count": 1,
+  "applied": true
+ }
+]

@@ -1,0 +1,13 @@
+**Criterion 1 — 404 for unknown id:** PASS (pre-existing) — The diff touches no handler code; the new test only asserts status 404, which the diff notes as "already true" behavior.
+
+**Criterion 2 — JSON body `{"error": "not found"}`:** FAIL — The diff contains only a test addition; no application code is modified to produce that body, so the test `self.assertEqual(ctx.exception.read(), b'{"error": "not found"}')` would fail against the current (unmodified) plain-text/empty 404 response.
+
+**Criterion 3 — `Content-Type: application/json`:** FAIL — No handler or server code is changed to set the header; the test asserting `headers.get("Content-Type") == "application/json"` would fail against the unmodified response.
+
+**Criterion 4 — Known-id GET unchanged:** PASS — The diff adds only a new test method; no existing handler or route logic is touched, so 200 + stored content behavior is untouched (though this also means nothing new was verified).
+
+**Criterion 5 — `/health`, revision reporting, existing probes unchanged:** PASS — The diff is additive-only in `app_test.py`; no production code or existing tests are modified.
+
+**Summary:** The diff ships the *verification* for criteria 2 and 3 but none of the *implementation*. As submitted, it adds failing tests, not a working feature.
+
+VERDICT: reject

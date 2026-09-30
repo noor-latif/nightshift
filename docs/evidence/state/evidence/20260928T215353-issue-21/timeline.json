@@ -1,0 +1,55 @@
+[
+ {
+  "ts": "2026-09-28T21:53:53Z",
+  "event": "lap-start",
+  "issue": 21,
+  "run_id": "20260928T215353-issue-21"
+ },
+ {
+  "ts": "2026-09-28T21:53:56Z",
+  "event": "claimed",
+  "title": "POST /paste accepts {\"content\": \"\"} and mints an empty paste \u2014 the empty-string check is missing on main"
+ },
+ {
+  "ts": "2026-09-28T21:54:07Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 453
+ },
+ {
+  "ts": "2026-09-28T21:54:07Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 1 mutations"
+ },
+ {
+  "ts": "2026-09-28T21:54:23Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-28T21:54:36Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-28T21:54:49Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/toy-product/pull/25",
+  "merge_sha": "b87eae6f7f1c0067756378ed6787bb9998b24a2b"
+ },
+ {
+  "ts": "2026-09-28T21:54:50Z",
+  "event": "deploy",
+  "rc": 0,
+  "tail": "HEAD is now at b87eae6 Implement issue 21 (#25)\nREADY\n"
+ },
+ {
+  "ts": "2026-09-28T21:54:53Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-28T21:54:53Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

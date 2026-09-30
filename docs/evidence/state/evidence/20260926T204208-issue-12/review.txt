@@ -1,0 +1,11 @@
+**Criterion 1: PASS** — POST handler unchanged: `self._send_json(201, {"id": self.store.create(content)})` still returns 201 with an id.
+
+**Criterion 2: PASS** — GET path logic unchanged: `content = self.store.get(...)` returns 200 with the content when found (only the unrelated `/stats` branch was removed).
+
+**Criterion 3: PASS** — New `do_DELETE` parses the path, calls `self.store.delete(paste_id)`, and on success sends `self.send_response(204)` with `Content-Length: 0`.
+
+**Criterion 4: PASS** — `store.delete` uses `pop(paste_id, None) is not None`, so a missing id returns False, which routes to `self._not_found()`; and after deletion, `get` returns `None`, which also routes to `_not_found()` (404 with error body).
+
+Minor notes (non-blocking): the `/stats` endpoint and `count` property were removed, but no acceptance criterion covers them; the empty-body 204 with explicit `Content-Length: 0` is correct for a 204 response.
+
+VERDICT: accept

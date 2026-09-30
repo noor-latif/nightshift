@@ -1,0 +1,5 @@
+{
+ "verdict": "fail",
+ "outcome": "crash",
+ "error": "RuntimeError: git push -u origin agent/issue-12 failed: To https://github.com/noor-latif/toy-product.git\n ! [rejected]        agent/issue-12 -> agent/issue-12 (non-fast-forward)\nerror: failed to push some refs to 'https://github.com/noor-latif/toy-product.git'\nhint: Updates were rejected because the tip of your current branch is behind\nhint: its remote counterpart. If you want to integrate the remote changes,\nhint: use 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details."
+}

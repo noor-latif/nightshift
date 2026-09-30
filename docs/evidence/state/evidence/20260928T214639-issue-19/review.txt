@@ -1,0 +1,9 @@
+**Criterion 1 — PASS.** The diff changes the 411 gate to `if not self.headers.get("Content-Length") and not self._is_chunked():` and `_read_body()` now parses chunked bodies (size lines, trailer termination via blank line, join + utf-8 decode), so a chunked POST with `{"content": "chunked hello"}` reaches `self._send_json(201, ...)`.
+
+**Criterion 2 — PASS.** `store.create`/`get` are unchanged, and the decoded chunked body is stored via the existing `self.store.create(content)` path, so GET returns the exact content.
+
+**Criterion 3 — PASS.** With Content-Length and no Transfer-Encoding header, `_is_chunked()` returns `False`, so the diff doesn't alter this path; `json.loads(b"not json")` raises ValueError, caught as 400 — existing test `test_post_rejects_non_json_body` still applies.
+
+**Criterion 4 — PASS.** The only behavioral change is inside the previously-411-gated/Content-Length body path; Content-Length requests fall through the new chunked branch (which only triggers when `_is_chunked()` is true) to the identical original read, and no existing test sends Transfer-Encoding: chunked, so no plausible breakage of existing tests.
+
+VERDICT: accept

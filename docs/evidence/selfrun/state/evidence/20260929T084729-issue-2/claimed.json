@@ -1,0 +1,22 @@
+[
+ {
+  "file": "src/supervisor.py",
+  "find": "    events = []\n    lap = state.get(\"lap\")",
+  "replace": "    events = []\n    lap = state.get(\"lap\")\n    idle = False"
+ },
+ {
+  "file": "src/supervisor.py",
+  "find": "            if d == \"idle\":\n                issues = state.get(\"issues\", {})\n                blocked = [int(n) for n, r in issues.items()\n                           if r.get(\"disposition\") not in (\"parked\", \"timeout-park\", \"merged\")]\n                parked = sum(1 for r in issues.values() if r.get(\"disposition\") in (\"parked\", \"timeout-park\"))\n                merged = sum(1 for r in issues.values() if r.get(\"disposition\") == \"merged\")\n                if blocked:\n                    events.append(\"BLOCKED:%s\" % \",\".join(map(str, sorted(blocked))))\n                else:\n                    events.append(\"DRAIN:%d parked, %d merged\" % (parked, merged))",
+  "replace": "            if d == \"idle\":\n                # Decide whether the queue is drained only after reconcile has\n                # accounted for claims left by a failed dispatch. A claim\n                # created before start_lap() can make dispatch idle while the\n                # issue remains retryable.\n                idle = True"
+ },
+ {
+  "file": "src/supervisor.py",
+  "find": "            runtime_log(\"intervention\", detail=note, claim=path)\n    save_state(state, deps[\"state_path\"])",
+  "replace": "            runtime_log(\"intervention\", detail=note, claim=path)\n    if idle:\n        issues = state.get(\"issues\", {})\n        blocked = [int(n) for n, r in issues.items()\n                   if r.get(\"disposition\") not in (\"parked\", \"timeout-park\", \"merged\")]\n        parked = sum(1 for r in issues.values()\n                     if r.get(\"disposition\") in (\"parked\", \"timeout-park\"))\n        merged = sum(1 for r in issues.values()\n                     if r.get(\"disposition\") == \"merged\")\n        if blocked:\n            events.append(\"BLOCKED:%s\" % \",\".join(map(str, sorted(blocked))))\n        else:\n            events.append(\"DRAIN:%d parked, %d merged\" % (parked, merged))\n    save_state(state, deps[\"state_path\"])"
+ },
+ {
+  "file": "tests/test_supervisor.py",
+  "find": "    def test_unaccounted_crash_counts_retries_at_reap(self):",
+  "replace": "    def test_tick_idle_with_fresh_open_claim_blocks_after_reconcile(self):\n        # A claim written before a dispatch spawn failure must not turn the\n        # following idle+reconcile tick into a queue-drained halt.\n        import selector\n\n        gh = os.path.join(self.tmp, \"gh\")\n        with open(gh, \"w\") as f:\n            f.write(\"#!%s\\n\" % sys.executable)\n            f.write(\n                \"import sys\\n\"\n                \"if sys.argv[1] == 'issue':\\n\"\n                \"    print('[{\\\"number\\\": 18, \\\"createdAt\\\": \\\"2026-01-01T00:00:00Z\\\"}]')\\n\"\n                \"else:\\n\"\n                \"    print('[]')\\n\"\n            )\n        os.chmod(gh, 0o755)\n        claim_path = self.claim(18, claimed_at=self.now)\n        state = {\"issues\": {}, \"lap\": None, \"started_at\": None}\n        deps = {\n            \"state_path\": os.path.join(self.tmp, \"state.json\"),\n            \"notify\": lambda text: None,\n            \"claim\": lambda now: selector.claim_next(\n                \"o/r\", issues_dir=self.claims, now=now, gh=gh,\n                dispositions=state[\"issues\"]),\n            \"start_lap\": lambda issue, lap: self.fail(\"fresh claim was dispatched\"),\n            \"kill_lap\": lambda lap: None,\n            \"lap_outcome\": lambda lap: \"crash\",\n            \"reconcile\": lambda now: supervisor.reconcile_dead_claims(\n                now, state, self.claims, result_path=self.result),\n            \"break_claim\": lambda path, now: os.remove(path),\n            \"reconcile_observations\": [],\n        }\n        with unittest.mock.patch.object(supervisor, \"RUNTIME_LOG_PATH\", self.log):\n            events = supervisor.tick(state, self.now, deps)\n        self.assertIn(\"dispatch:idle\", events)\n        self.assertIn(\"BLOCKED:18\", events)\n        self.assertFalse(any(e.startswith(\"DRAIN\") for e in events))\n        self.assertFalse(os.path.exists(claim_path))\n        self.assertEqual(state[\"issues\"][\"18\"][\"retries\"], 1)\n\n    def test_unaccounted_crash_counts_retries_at_reap(self):"
+ }
+]

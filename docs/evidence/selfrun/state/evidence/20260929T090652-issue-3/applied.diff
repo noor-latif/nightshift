@@ -1,0 +1,50 @@
+diff --git a/src/lap.py b/src/lap.py
+index f413a63..ac9da33 100644
+--- a/src/lap.py
++++ b/src/lap.py
+@@ -267,9 +267,11 @@ def apply_mutations(mutations, worktree):
+         start = hay.index(needle)
+         a = hay_idx[start]
+         end = start + len(needle)
+-        if needle.endswith("\n") and len(needle) > 1:
+-            end -= 1  # the anchor's final newline is a line boundary, not
+-                      # content: keep the file's own trailing bytes of that line
++        if (needle.endswith("\n") and len(needle) > 1
++                and not m["replace"].endswith("\n")):
++            end -= 1  # Preserve trailing-whitespace drift when the replacement
++                      # does not provide its own line boundary.
++
+         b = hay_idx[end - 1] + 1
+         contents[name] = text[:a] + m["replace"] + text[b:]
+         row["applied"] = True
+diff --git a/tests/test_lap_mutations.py b/tests/test_lap_mutations.py
+index 74ac03f..1bb2ce9 100644
+--- a/tests/test_lap_mutations.py
++++ b/tests/test_lap_mutations.py
+@@ -94,8 +94,26 @@ class TestApplyMutations(unittest.TestCase):
+         self.assertEqual(results[0]["anchor_count"], 1)
+         self.assertTrue(results[0]["applied"])
+ 
++    def test_newline_terminated_multiline_anchor_replaces_through_newline(self):
++        with open(os.path.join(self.dir, "app.py"), "w") as f:
++            f.write("A\nB\nC\n")
++        ok, detail, _ = lap.apply_mutations(
++            [mut("app.py", "A\nB\n", "X\n")], self.dir)
++        self.assertTrue(ok, detail)
++        with open(os.path.join(self.dir, "app.py"), "rb") as f:
++            self.assertEqual(f.read(), b"X\nC\n")
++
++        with open(os.path.join(self.dir, "app.py"), "w") as f:
++            f.write("A\nB\n")
++        ok, detail, _ = lap.apply_mutations(
++            [mut("app.py", "A\nB\n", "X\nY\n")], self.dir)
++        self.assertTrue(ok, detail)
++        with open(os.path.join(self.dir, "app.py"), "rb") as f:
++            self.assertEqual(f.read(), b"X\nY\n")
++
+     def test_anchor_miss_fails_loud_naming_file_and_prefix(self):
+         ok, detail, results = lap.apply_mutations(
++
+             [mut("app.py", "x = 42", "x = 2")], self.dir)
+         self.assertFalse(ok)
+         self.assertIn("app.py", detail)

@@ -1,0 +1,9 @@
+**Criterion 1: PASS** — The diff parses the query string out of the path (`urllib.parse.urlsplit(self.path).path`), so POST to `/paste?x=1` now correctly matches the `/paste` route and returns 201 with an id (post-body handling unchanged).
+
+**Criterion 2: FAIL** — The diff only modifies `do_POST`; `do_GET` is untouched, so a GET to `/paste/<id>?v=1` will still hit the strict path comparison (if present) and there is no evidence in the diff that query strings are handled on GET.
+
+**Criterion 3: PASS** — The change is purely to path routing; the non-JSON validation logic that follows (Content-Length check and body parsing) is unmodified, so a non-JSON body still returns 400.
+
+**Criterion 4: FAIL (cannot verify)** — No tests are shown or modified in the diff, and since GET handling was not updated in parallel with POST, there is no evidence the existing suite (or the new behavior) passes as a whole.
+
+VERDICT: reject

@@ -1,0 +1,39 @@
+diff --git a/src/lap.py b/src/lap.py
+index f413a63..376836d 100644
+--- a/src/lap.py
++++ b/src/lap.py
+@@ -267,9 +267,11 @@ def apply_mutations(mutations, worktree):
+         start = hay.index(needle)
+         a = hay_idx[start]
+         end = start + len(needle)
+-        if needle.endswith("\n") and len(needle) > 1:
+-            end -= 1  # the anchor's final newline is a line boundary, not
+-                      # content: keep the file's own trailing bytes of that line
++        if (needle.endswith("\n") and len(needle) > 1
++                and hay_idx[end - 1] != hay_idx[end - 2] + 1):
++            # Preserve source bytes normalized away before the final newline
++            # (for example trailing whitespace or a CR in a CRLF line).
++            end -= 1
+         b = hay_idx[end - 1] + 1
+         contents[name] = text[:a] + m["replace"] + text[b:]
+         row["applied"] = True
+diff --git a/tests/test_lap_mutations.py b/tests/test_lap_mutations.py
+index 74ac03f..1d29623 100644
+--- a/tests/test_lap_mutations.py
++++ b/tests/test_lap_mutations.py
+@@ -140,6 +140,15 @@ class TestApplyMutations(unittest.TestCase):
+         self.assertEqual(open(os.path.join(self.dir, "app.py")).read(),
+                          "def f():\n    return 2\n")
+ 
++    def test_newline_terminated_anchor_consumes_newline(self):
++        with open(os.path.join(self.dir, "app.py"), "wb") as f:
++            f.write(b"A\nB\nC\n")
++        ok, detail, _ = lap.apply_mutations(
++            [mut("app.py", "A\nB\n", "X\n")], self.dir)
++        self.assertTrue(ok, detail)
++        with open(os.path.join(self.dir, "app.py"), "rb") as f:
++            self.assertEqual(f.read(), b"X\nC\n")
++
+     def test_nothing_written_when_any_anchor_misses(self):
+         ok, detail, _ = lap.apply_mutations(
+             [mut("app.py", "x = 1", "x = 2"),

@@ -1,0 +1,112 @@
+diff --git a/src/supervisor.py b/src/supervisor.py
+index f14e025..ffed76d 100644
+--- a/src/supervisor.py
++++ b/src/supervisor.py
+@@ -243,6 +243,7 @@ def tick(state, now, deps):
+     """One supervisor tick: health-check → reconcile → dispatch → tail."""
+     events = []
+     lap = state.get("lap")
++    dispatch_idle = False
+ 
+     if lap:
+         if lap_healthy(lap, now):
+@@ -268,15 +269,10 @@ def tick(state, now, deps):
+         if d not in ("already-running",):
+             events.append("dispatch:" + d)
+             if d == "idle":
+-                issues = state.get("issues", {})
+-                blocked = [int(n) for n, r in issues.items()
+-                           if r.get("disposition") not in ("parked", "timeout-park", "merged")]
+-                parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
+-                merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
+-                if blocked:
+-                    events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
+-                else:
+-                    events.append("DRAIN:%d parked, %d merged" % (parked, merged))
++                # Dispatch-idle is provisional: reconcile may account for an
++                # orphan claim left by a failed dispatch in this same tick.
++                # Decide between BLOCKED and DRAIN only after reconcile runs.
++                dispatch_idle = True
+ 
+     # reconcile: reap claims for issues with no live lap (supervisor restart)
+     observations = deps.get("reconcile_observations") or []
+@@ -287,6 +283,23 @@ def tick(state, now, deps):
+             note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
+             observations.append(note)
+             runtime_log("intervention", detail=note, claim=path)
++
++    # Reconcile can turn a claim left by a failed dispatch into a retryable
++    # issue.  Classifying an idle queue before this point could emit DRAIN and
++    # make main() halt while that issue still has work remaining.
++    if dispatch_idle:
++        issues = state.get("issues", {})
++        blocked = [int(n) for n, r in issues.items()
++                   if r.get("disposition") not in ("parked", "timeout-park", "merged")]
++        parked = sum(1 for r in issues.values()
++                     if r.get("disposition") in ("parked", "timeout-park"))
++        merged = sum(1 for r in issues.values()
++                     if r.get("disposition") == "merged")
++        if blocked:
++            events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
++        else:
++            events.append("DRAIN:%d parked, %d merged" % (parked, merged))
++
+     save_state(state, deps["state_path"])
+     return events
+ 
+diff --git a/tests/test_supervisor.py b/tests/test_supervisor.py
+index 679db82..76206d8 100644
+--- a/tests/test_supervisor.py
++++ b/tests/test_supervisor.py
+@@ -285,6 +285,51 @@ class TestParkAndContinue(unittest.TestCase):
+         self.assertIn("BLOCKED:9", events)
+         self.assertNotIn("DRAIN", ",".join(events))
+ 
++    def test_idle_reconcile_claim_is_blocked_not_drained(self):
++        # Real selector + real reconcile in one tick: a fresh claim left on
++        # disk by a dispatch failure must become retryable work, not DRAIN.
++        import selector
++
++        claims = os.path.join(self.tmp, "claims")
++        os.makedirs(claims)
++        claim_path = os.path.join(claims, "issue-18.json")
++        with open(claim_path, "w") as f:
++            json.dump({"issue": 18, "claimed_at": self.now}, f)
++
++        gh = os.path.join(self.tmp, "gh")
++        with open(gh, "w") as f:
++            f.write("#!%s\n" % sys.executable)
++            f.write(
++                "import sys\n"
++                "if sys.argv[1:3] == ['issue', 'list']:\n"
++                "    print('[{\"number\": 18, \"createdAt\": \"2026-01-01T00:00:00Z\"}]')\n"
++                "else:\n"
++                "    print('[]')\n"
++            )
++        os.chmod(gh, 0o755)
++
++        state = {"issues": {}, "lap": None, "started_at": None}
++        result_path = os.path.join(self.tmp, "lap-result.json")
++        deps = {
++            "state_path": os.path.join(self.tmp, "state.json"),
++            "notify": lambda text: None,
++            "claim": lambda now: selector.claim_next(
++                "r/x", claims, now=now, gh=gh),
++            "start_lap": lambda issue, lap: self.fail("dispatch must stay idle"),
++            "kill_lap": lambda lap: None,
++            "lap_outcome": lambda lap: "crash",
++            "reconcile": lambda now: supervisor.reconcile_dead_claims(
++                now, state, claims, result_path=result_path),
++            "break_claim": lambda path, now: os.remove(path),
++            "red_recheck": None,
++            "reconcile_observations": [],
++        }
++        events = supervisor.tick(state, self.now, deps)
++        self.assertIn("dispatch:idle", events)
++        self.assertIn("BLOCKED:18", events)
++        self.assertNotIn("DRAIN", ",".join(events))
++        self.assertEqual(state["issues"]["18"]["disposition"], "retry")
++
+     def test_blocked_exit_nonzero_drained_exit_zero(self):
+         # main-loop: BLOCKED -> exit 1; DRAIN -> clean break (exit 0)
+         def run_main(events):

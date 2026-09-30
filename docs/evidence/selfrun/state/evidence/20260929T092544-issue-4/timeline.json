@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-29T09:25:44Z",
+  "event": "lap-start",
+  "issue": 4,
+  "run_id": "20260929T092544-issue-4"
+ },
+ {
+  "ts": "2026-09-29T09:25:45Z",
+  "event": "claimed",
+  "title": "Hold from the scenario ladder escapes verify_candidate() as a raw exception, burning retry budget on infra failure"
+ },
+ {
+  "ts": "2026-09-29T09:32:10Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 2420
+ },
+ {
+  "ts": "2026-09-29T09:32:10Z",
+  "event": "mutation-apply",
+  "ok": false,
+  "detail": "mutation-apply: tests/test_verify.py: anchor occurs 0 times (expected 1), anchor prefix: 'class TestExecOracle:\\n'"
+ },
+ {
+  "ts": "2026-09-29T09:32:10Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "mutation-apply"
+ }
+]

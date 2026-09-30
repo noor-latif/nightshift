@@ -1,0 +1,7 @@
+I'll start by inspecting the actual checkout to see the current state of the code and repo.
+
+<｜｜DSML｜｜ calls>
+<｜｜DSML｜｜ invoke name="bash">
+<｜｜DSML｜｜ parameter name="command" string="true">pwd; echo '--- ls ---'; ls -la; echo '--- git status ---'; git status -b --porcelain=v1; echo '--- git log ---'; git log --oneline -5; echo '--- python ---'; python3 --version; echo '--- not_found ---'; grep -n "_not_found" -A4 app.py</｜｜DSML｜｜ parameter>
+</｜｜DSML｜｜ invoke>
+</｜｜DSML｜｜ calls>

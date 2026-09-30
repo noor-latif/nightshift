@@ -1,0 +1,14 @@
+## Review
+
+**Criterion 1 — repro covered by oracle and/or equivalent in-tests test: PASS.**
+`tests/test_supervisor.py` now contains `test_idle_reconcile_claim_open_issue_is_blocked_not_drained`, which builds exactly the repro state (dispatch returns `idle` because issue 18's fresh claim file exists on disk and is not stale, the issue is open on GitHub via the stub `gh`), drives reconcile in the same tick, and asserts no `DRAIN` + `BLOCKED:18`. No new standalone file is introduced; the test lives inside the existing `tests/test_supervisor.py`, consistent with the provided-files contract.
+
+**Criterion 2 — tick events contain `BLOCKED:18` (never `DRAIN` while 18 open): PASS.**
+The new test asserts `self.assertIn("BLOCKED:18", events)` and `self.assertFalse(any(e.startswith("DRAIN") for e in events))`. Tracing the fixed code: `dispatch` → claim is un-stale → `None` → `dispatch_idle = True`; `reconcile_dead_claims` finds the orphan claim with no terminal result → `handle_outcome("crash", 18)` sets `issues["18"] = {"retries": 1, "disposition": "retry"}`; then the deferred classification block sees a non-terminal disposition → appends `BLOCKED:18`, not `DRAIN`.
+
+**Criterion 3 — same-tick regression test that fails on pre-fix code: PASS.**
+The test drives dispatch-idle and reconcile in the SAME tick with a fresh claim file (created by `selector.claim_next` in the test body) and the issue open on the stub GitHub. On pre-fix code, the `BLOCKED`/`DRAIN` classification ran immediately after `dispatch` (old hunk deleted from the dispatch branch), *before* reconcile ran — `state["issues"]` was empty at that point, so events would contain `DRAIN:0 parked, 0 merged` and no `BLOCKED:18`, failing both assertions. The diff's reorder (classification deferred until after the reconcile loop, gated on `dispatch_idle`) is the minimal correct fix; the `deps` dict used in the test lacks `start_lap`/`kill_lap`/`lap_outcome`, but none of those are reachable on this path (`claim` returns `None`, `state["lap"]` stays `None`, `red_recheck` is accessed via `deps.get`).
+
+No existing test appears broken by the change: the moved block is behavior-identical for the non-reconcile path, and existing tests (`test_idle_after_all_terminal_drains`, `test_idle_with_open_pr_issue_blocks_not_drains`) still hold under the deferred classification since reconcile reports no dead claims in those fixtures.
+
+VERDICT: accept

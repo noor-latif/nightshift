@@ -1,0 +1,50 @@
+Sep 28 22:39:30 latif systemd[725]: Started [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 22:40:09 latif systemd[725]: Stopping [systemd-run] /usr/bin/python3 src/supervisor.py...
+Sep 28 22:40:09 latif systemd[725]: Stopped [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 22:40:09 latif systemd[725]: nightshift-s1.service: Consumed 1.094s CPU time over 39.455s wall clock time, 49.1M memory peak.
+Sep 28 22:42:01 latif systemd[725]: Started [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 22:50:20 latif python3[266450]: Traceback (most recent call last):
+Sep 28 22:50:20 latif python3[266450]:   File "~/nightshift/src/supervisor.py", line 458, in <module>
+Sep 28 22:50:20 latif python3[266450]:     main()
+Sep 28 22:50:20 latif python3[266450]:     ~~~~^^
+Sep 28 22:50:20 latif python3[266450]:   File "~/nightshift/src/supervisor.py", line 436, in main
+Sep 28 22:50:20 latif python3[266450]:     events = tick(state, now, deps)
+Sep 28 22:50:20 latif python3[266450]:   File "~/nightshift/src/supervisor.py", line 278, in tick
+Sep 28 22:50:20 latif python3[266450]:     deps["break_claim"](path, now)
+Sep 28 22:50:20 latif python3[266450]:     ~~~~^^^^^^^^^^^^^^^
+Sep 28 22:50:20 latif python3[266450]: KeyError: 'break_claim'
+Sep 28 22:50:20 latif systemd[725]: nightshift-s1.service: Main process exited, code=exited, status=1/FAILURE
+Sep 28 22:50:20 latif systemd[725]: nightshift-s1.service: Failed with result 'exit-code'.
+Sep 28 22:50:20 latif systemd[725]: nightshift-s1.service: Consumed 3.221s CPU time over 8min 19.259s wall clock time, 52.3M memory peak.
+Sep 28 23:11:04 latif systemd[725]: Started [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 23:12:29 latif python3[279494]: Traceback (most recent call last):
+Sep 28 23:12:29 latif python3[279494]:   File "~/nightshift/src/supervisor.py", line 458, in <module>
+Sep 28 23:12:29 latif python3[279494]:     main()
+Sep 28 23:12:29 latif python3[279494]:     ~~~~^^
+Sep 28 23:12:29 latif python3[279494]:   File "~/nightshift/src/supervisor.py", line 436, in main
+Sep 28 23:12:29 latif python3[279494]:     events = tick(state, now, deps)
+Sep 28 23:12:29 latif python3[279494]:   File "~/nightshift/src/supervisor.py", line 278, in tick
+Sep 28 23:12:29 latif python3[279494]:     deps["break_claim"](path, now)
+Sep 28 23:12:29 latif python3[279494]:     ~~~~^^^^^^^^^^^^^^^
+Sep 28 23:12:29 latif python3[279494]: KeyError: 'break_claim'
+Sep 28 23:12:29 latif systemd[725]: nightshift-s1.service: Main process exited, code=exited, status=1/FAILURE
+Sep 28 23:12:29 latif systemd[725]: nightshift-s1.service: Failed with result 'exit-code'.
+Sep 28 23:12:29 latif systemd[725]: nightshift-s1.service: Consumed 1.146s CPU time over 1min 24.801s wall clock time, 48.6M memory peak.
+Sep 28 23:14:50 latif systemd[725]: Started [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 23:19:20 latif python3[281259]: Traceback (most recent call last):
+Sep 28 23:19:20 latif python3[281259]:   File "~/nightshift/src/supervisor.py", line 458, in <module>
+Sep 28 23:19:20 latif python3[281259]:     main()
+Sep 28 23:19:20 latif python3[281259]:     ~~~~^^
+Sep 28 23:19:20 latif python3[281259]:   File "~/nightshift/src/supervisor.py", line 436, in main
+Sep 28 23:19:20 latif python3[281259]:     events = tick(state, now, deps)
+Sep 28 23:19:20 latif python3[281259]:   File "~/nightshift/src/supervisor.py", line 278, in tick
+Sep 28 23:19:20 latif python3[281259]:     deps["break_claim"](path, now)
+Sep 28 23:19:20 latif python3[281259]:     ~~~~^^^^^^^^^^^^^^^
+Sep 28 23:19:20 latif python3[281259]: KeyError: 'break_claim'
+Sep 28 23:19:20 latif systemd[725]: nightshift-s1.service: Main process exited, code=exited, status=1/FAILURE
+Sep 28 23:19:20 latif systemd[725]: nightshift-s1.service: Failed with result 'exit-code'.
+Sep 28 23:19:20 latif systemd[725]: nightshift-s1.service: Consumed 2.403s CPU time over 4min 29.842s wall clock time, 59.8M memory peak.
+Sep 28 23:27:09 latif systemd[725]: Started [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 23:34:11 latif systemd[725]: Stopping [systemd-run] /usr/bin/python3 src/supervisor.py...
+Sep 28 23:34:11 latif systemd[725]: Stopped [systemd-run] /usr/bin/python3 src/supervisor.py.
+Sep 28 23:34:11 latif systemd[725]: nightshift-s1.service: Consumed 2.977s CPU time over 7min 2.143s wall clock time, 52.8M memory peak.

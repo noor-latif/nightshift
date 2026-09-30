@@ -1,0 +1,122 @@
+{
+ "unit": {
+  "status": "pass",
+  "output": "127.0.0.1 - - [26/Sep/2026 23:05:21] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:21] \"GET /paste/-1BVB3OJuaw HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 23:05:21] \"DELETE /paste/-1BVB3OJuaw HTTP/1.1\" 204 -\n127.0.0.1 - - [26/Sep/2026 23:05:21] \"GET /paste/-1BVB3OJuaw HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 23:05:21] \"DELETE /paste/does-not-exist-123 HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 23:05:22] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:22] \"GET /paste/6uLjaJLFsq8 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:22] \"GET /paste HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 23:05:23] \"GET /health HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:23] \"GET /health HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:24] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [26/Sep/2026 23:05:24] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [26/Sep/2026 23:05:25] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [26/Sep/2026 23:05:25] \"POST /paste HTTP/1.1\" 201 -\n.127.0.0.1 - - [26/Sep/2026 23:05:26] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:26] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:26] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:26] \"GET /paste/h6AUMIYZ9mY HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 23:05:26] \"GET /paste/1TN35y3kpbk HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 23:05:26] \"GET /paste/wNobCgkEvRA HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:26] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:26] \"GET /paste/V6rI11T1eEg HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 23:05:27] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:27] \"GET /paste/msSDQQaRb40 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:28] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:28] \"GET /paste/S-EMOOF4yOs HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:28] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:28] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:28] \"GET /paste/kmxn69GDlGs HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 23:05:28] \"GET /paste/JxXKQQIvQFs HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:29] code 501, message Unsupported method ('PUT')\n127.0.0.1 - - [26/Sep/2026 23:05:29] \"PUT /paste/whatever HTTP/1.1\" 501 -\n127.0.0.1 - - [26/Sep/2026 23:05:29] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:29] \"GET /paste/o_AavPzSbZ8 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:29] \"GET /paste/does-not-exist-123 HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 23:05:30] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:30] \"GET /paste/II19hj5uQF4?v=1 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:30] \"GET /health?x=1 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 23:05:31] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 23:05:31] \"GET /paste/AdqxfKdVtBg HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 23:05:31] \"GET /paste HTTP/1.1\" 404 -\n127.0.0.1 - - [26/Sep/2026 23:05:31] \"GET /paste/ HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 23:05:32] \"GET /paste/nope-123?v=1 HTTP/1.1\" 404 -\n.\n----------------------------------------------------------------------\nRan 21 tests in 11.093s\n\nOK\n"
+ },
+ "scenarios": [
+  {
+   "scenario": "issue-12-delete-paste",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 201,
+     "observed_status": 201,
+     "expected_fragment": "id",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/kIsA7OTm8PA",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "delete me",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "DELETE http://127.0.0.1:[redacted-port]/paste/kIsA7OTm8PA",
+     "expected_status": 204,
+     "observed_status": 204,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/kIsA7OTm8PA",
+     "expected_status": 404,
+     "observed_status": 404,
+     "expected_fragment": "not found",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "paste-round-trip",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 201,
+     "observed_status": 201,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/ciqQqWjD0-s",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "hello factory",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "malformed-body-400",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 400,
+     "observed_status": 400,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "nonstring-content-400",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 400,
+     "observed_status": 400,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "unknown-id-404",
+   "checks": [
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/does-not-exist",
+     "expected_status": 404,
+     "observed_status": 404,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "health-revision",
+   "checks": [
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/health",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "127242796a391763758c6716f66142a136e9b746",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  }
+ ],
+ "provenance": {
+  "status": "pass",
+  "detail": {
+   "reported": "127242796a391763758c6716f66142a136e9b746",
+   "head": "127242796a391763758c6716f66142a136e9b746"
+  }
+ },
+ "verdict": "pass"
+}

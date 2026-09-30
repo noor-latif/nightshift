@@ -1,0 +1,122 @@
+{
+ "unit": {
+  "status": "pass",
+  "output": "127.0.0.1 - - [26/Sep/2026 22:43:47] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:47] \"GET /paste/FsnwKpy-y_g HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:47] \"GET /paste HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 22:43:48] \"GET /health HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:48] \"GET /health HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:49] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [26/Sep/2026 22:43:49] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [26/Sep/2026 22:43:50] \"POST /paste HTTP/1.1\" 400 -\n.127.0.0.1 - - [26/Sep/2026 22:43:50] \"POST /paste HTTP/1.1\" 201 -\n.127.0.0.1 - - [26/Sep/2026 22:43:51] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:51] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:51] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:51] \"GET /paste/qQ4nz73t02w HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 22:43:51] \"GET /paste/nmBoovaTN5Q HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 22:43:51] \"GET /paste/vik7qT8Gbs4 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:51] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:51] \"GET /paste/tQQHgOJxC80 HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 22:43:52] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:52] \"GET /paste/AB9iG896gnA HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:53] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:53] \"GET /paste/fiaYytUOhBE HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:53] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:53] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:53] \"GET /paste/dkecYWaeUQI HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 22:43:53] \"GET /paste/DMYRr33WDak HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:54] code 501, message Unsupported method ('PUT')\n127.0.0.1 - - [26/Sep/2026 22:43:54] \"PUT /paste/whatever HTTP/1.1\" 501 -\n127.0.0.1 - - [26/Sep/2026 22:43:54] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:54] \"GET /paste/KU8pY0miT0c HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:54] \"GET /paste/does-not-exist-123 HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 22:43:55] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:55] \"GET /paste/u4Nro27wZ0k?v=1 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:55] \"GET /health?x=1 HTTP/1.1\" 200 -\n.127.0.0.1 - - [26/Sep/2026 22:43:56] \"POST /paste HTTP/1.1\" 201 -\n127.0.0.1 - - [26/Sep/2026 22:43:56] \"GET /paste/SI6bmoZVB5Y HTTP/1.1\" 200 -\n127.0.0.1 - - [26/Sep/2026 22:43:56] \"GET /paste HTTP/1.1\" 404 -\n127.0.0.1 - - [26/Sep/2026 22:43:56] \"GET /paste/ HTTP/1.1\" 404 -\n.127.0.0.1 - - [26/Sep/2026 22:43:56] \"GET /paste/nope-123?v=1 HTTP/1.1\" 404 -\n.\n----------------------------------------------------------------------\nRan 19 tests in 10.073s\n\nOK\n"
+ },
+ "scenarios": [
+  {
+   "scenario": "issue-12-delete-paste",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 201,
+     "observed_status": 201,
+     "expected_fragment": "id",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/-8bMD2G7th8",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "delete me",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "DELETE http://127.0.0.1:[redacted-port]/paste/-8bMD2G7th8",
+     "expected_status": 204,
+     "observed_status": 204,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/-8bMD2G7th8",
+     "expected_status": 404,
+     "observed_status": 404,
+     "expected_fragment": "not found",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "paste-round-trip",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 201,
+     "observed_status": 201,
+     "status": "pass"
+    },
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/CmzKHVJR7YU",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "hello factory",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "malformed-body-400",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 400,
+     "observed_status": 400,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "nonstring-content-400",
+   "checks": [
+    {
+     "assertion": "POST http://127.0.0.1:[redacted-port]/paste",
+     "expected_status": 400,
+     "observed_status": 400,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "unknown-id-404",
+   "checks": [
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/paste/does-not-exist",
+     "expected_status": 404,
+     "observed_status": 404,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  },
+  {
+   "scenario": "health-revision",
+   "checks": [
+    {
+     "assertion": "GET http://127.0.0.1:[redacted-port]/health",
+     "expected_status": 200,
+     "observed_status": 200,
+     "expected_fragment": "66ec070c2738c10f2a25174c9c40ad9edb00b451",
+     "fragment_found": true,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  }
+ ],
+ "provenance": {
+  "status": "pass",
+  "detail": {
+   "reported": "66ec070c2738c10f2a25174c9c40ad9edb00b451",
+   "head": "66ec070c2738c10f2a25174c9c40ad9edb00b451"
+  }
+ },
+ "verdict": "pass"
+}

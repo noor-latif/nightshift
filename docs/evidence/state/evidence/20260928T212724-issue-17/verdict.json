@@ -1,0 +1,5 @@
+{
+ "verdict": "fail",
+ "outcome": "crash",
+ "error": "RuntimeError: worktree add failed: fatal: 'agent/issue-17' is already used by worktree at '~/factory-lab/toy-product/.factory/worktrees/agent-issue-17'"
+}

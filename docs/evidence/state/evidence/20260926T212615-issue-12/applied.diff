@@ -1,0 +1,37 @@
+diff --git a/app.py b/app.py
+index 58e6d02..27cc084 100644
+--- a/app.py
++++ b/app.py
+@@ -44,7 +44,8 @@ class PasteStore:
+         return self._pastes.get(paste_id)
+ 
+     def delete(self, paste_id: str) -> bool:
+-        return self._pastes.pop(paste_id, None) is not None
++        missing = object()
++        return self._pastes.pop(paste_id, missing) is not missing
+ 
+ 
+ class PasteHandler(BaseHTTPRequestHandler):
+@@ -89,9 +90,7 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if not self.store.delete(paste_id):
+             self._not_found()
+             return
+-        self.send_response(204)
+-        self.send_header("Content-Length", "0")
+-        self.end_headers()
++        self._send_no_content()
+ 
+     def _read_body(self) -> str:
+         length = int(self.headers.get("Content-Length") or 0)
+@@ -100,6 +99,11 @@ class PasteHandler(BaseHTTPRequestHandler):
+     def _not_found(self) -> None:
+         self._send_json(404, {"error": "not found"})
+ 
++    def _send_no_content(self) -> None:
++        self.send_response(204)
++        self.send_header("Content-Length", "0")
++        self.end_headers()
++
+     def _send_json(self, status: int, payload: dict) -> None:
+         body = json.dumps(payload).encode("utf-8")
+         self.send_response(status)

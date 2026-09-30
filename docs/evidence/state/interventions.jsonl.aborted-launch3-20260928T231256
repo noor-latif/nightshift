@@ -1,0 +1,4 @@
+{"ts": "2026-09-28T21:11:05Z", "event": "session-start", "pid": 279494}
+{"ts": "2026-09-28T21:11:19Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T21:11:19Z", "event": "dispatch", "issue": 17, "pid": 279741}
+{"ts": "2026-09-28T21:12:29Z", "event": "intervention", "detail": "orphan claim reaped with no terminal result (crash counted at reap): state/claims/issue-18.json", "issue": 18, "disposition": "retry"}

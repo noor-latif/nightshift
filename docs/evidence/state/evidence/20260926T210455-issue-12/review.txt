@@ -1,0 +1,13 @@
+Review of diff vs acceptance criteria:
+
+1. **PASS** — Test posts `{"content": "delete me"}` and asserts status 201 and reads `id` from the JSON body (`paste_id = json.loads(body)["id"]`).
+
+2. **PASS** — Test asserts GET returns 200 and `json.loads(body) == {"content": "delete me"}`.
+
+3. **PASS** — Test asserts DELETE returns 204 and empty body (`self.assertEqual(status, 204)` / `self.assertEqual(body, b"")`).
+
+4. **PASS** — Test asserts a second GET returns 404 with body `{"error": "not found"}`; additionally, the unknown-id DELETE test covers 404 with error body for nonexistent IDs.
+
+Note: This diff only adds tests — no implementation change is present. The verdict below assumes the tests pass against the existing implementation (the tests are well-formed and their assertions match the criteria exactly); if the intent of this change was to implement DELETE functionality, no such implementation is included in the diff and this should be flagged.
+
+VERDICT: accept

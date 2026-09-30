@@ -1,0 +1,5 @@
+{
+ "verdict": "fail",
+ "outcome": "crash",
+ "error": "IdentityMismatch: tree mismatch after squash merge: 8935820a6f6c2494d478cc1d80ba1c3f52e3ea8d vs 66ec070c2738c10f2a25174c9c40ad9edb00b451"
+}

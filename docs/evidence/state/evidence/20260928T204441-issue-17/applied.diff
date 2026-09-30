@@ -1,0 +1,14 @@
+diff --git a/app.py b/app.py
+index 04c1119..41c5645 100644
+--- a/app.py
++++ b/app.py
+@@ -67,7 +67,8 @@ class PasteHandler(BaseHTTPRequestHandler):
+             self._not_found()
+ 
+     def do_POST(self) -> None:
+-        if self.path != "/paste":
++        path = urllib.parse.urlsplit(self.path).path
++        if path != "/paste":
+             self._not_found()
+             return
+         if not self.headers.get("Content-Length"):

@@ -1,0 +1,167 @@
+--- a/app.py
++++ b/app.py
+@@ -48,6 +48,10 @@ class PasteStore:
+         return self._pastes.pop(paste_id, None) is not None
+ 
+ 
++class ContentLengthRequiredError(Exception):
++    """Raised when a body request does not provide a usable length header."""
++
++
+ class PasteHandler(BaseHTTPRequestHandler):
+     store: PasteStore
+ 
+@@ -63,6 +67,9 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if self.path != "/paste":
+             self._not_found()
+             return
++        try:
++            body = json.loads(self._read_body())
++        except ContentLengthRequiredError:
++            self._send_json(411, {"error": "Content-Length required"})
++            return
+-        try:
+-            body = json.loads(self._read_body())
+         except (ValueError, UnicodeDecodeError):
+             self._send_json(400, {"error": "invalid JSON body"})
+             return
+@@ -92,7 +99,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+         self.wfile.write(body)
+ 
+     def _read_body(self) -> str:
+-        length = int(self.headers.get("Content-Length") or 0)
++        length_header = self.headers.get("Content-Length")
++        if length_header is None or length_header == "":
++            raise ContentLengthRequiredError
++        length = int(length_header)
+         return self.rfile.read(length).decode("utf-8")
+
+--- /dev/null
++++ b/content_length_test.py
+@@ -0,0 +1,125 @@
++"""Tests for POST body framing and Content-Length handling."""
++from __future__ import annotations
++
++import http.client
++import json
++import socket
++import threading
++import unittest
++
++import app
++
++
++class ContentLengthFramingTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.server = app.make_server(0)
++        self.port = self.server.server_address[1]
++        threading.Thread(target=self.server.serve_forever, daemon=True).start()
++        self.addCleanup(self.server.shutdown)
++        self.addCleanup(self.server.server_close)
++
++    def request(
++        self,
++        method: str,
++        path: str,
++        body: bytes | None = None,
++        headers: dict[str, str] | None = None,
++    ) -> tuple[int, bytes]:
++        connection = http.client.HTTPConnection(
++            "127.0.0.1", self.port, timeout=2
++        )
++        try:
++            connection.request(method, path, body=body, headers=headers or {})
++            response = connection.getresponse()
++            return response.status, response.read()
++        finally:
++            connection.close()
++
++    def raw_request_without_length(self, body: bytes) -> tuple[int, bytes]:
++        request = (
++            f"POST /paste HTTP/1.1\r\n"
++            f"Host: 127.0.0.1:{self.port}\r\n"
++            "Content-Type: application/json\r\n"
++            "Connection: close\r\n"
++            "\r\n"
++        ).encode("ascii") + body
++
++        with socket.create_connection(("127.0.0.1", self.port), timeout=2) as sock:
++            sock.sendall(request)
++            sock.shutdown(socket.SHUT_WR)
++            chunks = []
++            while True:
++                chunk = sock.recv(4096)
++                if not chunk:
++                    break
++                chunks.append(chunk)
++
++        response = b"".join(chunks)
++        header_end = response.index(b"\r\n\r\n")
++        status_line = response.split(b"\r\n", 1)[0]
++        status = int(status_line.split()[1])
++        return status, response[header_end + 4:]
++
++    def test_post_without_content_length_returns_411(self) -> None:
++        body = b'{"content":"no length"}'
++        status, response_body = self.raw_request_without_length(body)
++        self.assertEqual(status, 411)
++        self.assertIn(b"Content-Length required", response_body)
++
++    def test_post_with_empty_content_length_returns_411(self) -> None:
++        body = b'{"content":"no length"}'
++        status, response_body = self.request(
++            "POST",
++            "/paste",
++            body,
++            {
++                "Content-Type": "application/json",
++                "Content-Length": "",
++            },
++        )
++        self.assertEqual(status, 411)
++        self.assertIn(b"Content-Length required", response_body)
++
++    def test_post_with_content_length_still_creates_paste(self) -> None:
++        body = json.dumps({"content": "with length"}).encode("utf-8")
++        status, response_body = self.request(
++            "POST",
++            "/paste",
++            body,
++            {"Content-Type": "application/json", "Content-Length": str(len(body))},
++        )
++        self.assertEqual(status, 201)
++        self.assertIn(b'"id"', response_body)
++
++    def test_post_with_content_length_keeps_invalid_json_response(self) -> None:
++        body = b"not json"
++        status, response_body = self.request(
++            "POST",
++            "/paste",
++            body,
++            {"Content-Length": str(len(body))},
++        )
++        self.assertEqual(status, 400)
++        self.assertIn(b"invalid JSON body", response_body)
++
++    def test_get_requests_do_not_require_content_length(self) -> None:
++        status, response_body = self.request("GET", "/health")
++        self.assertEqual(status, 200)
++        self.assertEqual(json.loads(response_body)["status"], "ok")
++
++        body = json.dumps({"content": "get me"}).encode("utf-8")
++        status, response_body = self.request(
++            "POST",
++            "/paste",
++            body,
++            {"Content-Length": str(len(body))},
++        )
++        self.assertEqual(status, 201)
++        paste_id = json.loads(response_body)["id"]
++
++        status, response_body = self.request("GET", f"/paste/{paste_id}")
++        self.assertEqual(status, 200)
++        self.assertEqual(json.loads(response_body), {"content": "get me"})
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,19 @@
+[
+ {
+  "ts": "2026-09-26T04:10:23Z",
+  "event": "lap-start",
+  "issue": 7,
+  "run_id": "20260926T041023-issue-7"
+ },
+ {
+  "ts": "2026-09-26T04:10:24Z",
+  "event": "claimed",
+  "title": "POST /paste with a malformed Content-Length header crashes the request instead of answering 400"
+ },
+ {
+  "ts": "2026-09-26T04:11:27Z",
+  "event": "lap-end",
+  "outcome": "crash",
+  "gate": null
+ }
+]

@@ -1,0 +1,1 @@
+[{"file":"app.py","find":"    def do_POST(self) -> None:\n        if self.path != \"/paste\":","replace":"    def do_POST(self) -> None:\n        path = urllib.parse.urlsplit(self.path).path\n        if path != \"/paste\":"}]

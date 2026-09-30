@@ -1,0 +1,75 @@
+--- a/app.py
++++ b/app.py
+@@ -57,7 +57,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+         content = body.get("content") if isinstance(body, dict) else None
+         if not isinstance(content, str):
+             self._send_json(400, {"error": "'content' must be a string"})
+             return
++        if content == "":
++            self._send_json(400, {"error": "'content' must be a non-empty string"})
++            return
+         self._send_json(201, {"id": self.store.create(content)})
+ 
+     def _read_body(self) -> str:
+--- /dev/null
++++ b/paste_empty_content_test.py
++"""Unit tests for POST /paste rejection of empty-string content."""
++from __future__ import annotations
++
++import json
++import threading
++import unittest
++
++import app
++
++class PasteEmptyContentTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.server = app.make_server(0)
++        self.port = self.server.server_address[1]
++        threading.Thread(target=self.server.serve_forever, daemon=True).start()
++        self.addCleanup(self.server.shutdown)
++        self.addCleanup(self.server.server_close)
++        self.base = f"http://127.0.0.1:{self.port}"
++
++    def request(self, method: str, path: str, payload: dict | None = None) -> tuple[int, bytes]:
++        import urllib.error
++        import urllib.request
++
++        data = json.dumps(payload).encode("utf-8") if payload is not None else None
++        req = urllib.request.Request(self.base + path, data=data, method=method)
++        try:
++            with urllib.request.urlopen(req) as resp:
++                return resp.status, resp.read()
++        except urllib.error.HTTPError as e:
++            return e.code, e.read()
++
++    def test_post_empty_content_returns_400_without_id(self) -> None:
++        status, body = self.request("POST", "/paste", {"content": ""})
++        self.assertEqual(status, 400)
++        payload = json.loads(body)
++        self.assertTrue(payload["error"])
++        self.assertNotIn("id", payload)
++
++    def test_post_single_char_content_still_returns_201(self) -> None:
++        status, body = self.request("POST", "/paste", {"content": "x"})
++        self.assertEqual(status, 201)
++        payload = json.loads(body)
++        self.assertIsInstance(payload["id"], str)
++        self.assertTrue(payload["id"])
++
++    def test_post_non_string_content_still_returns_400(self) -> None:
++        status, body = self.request("POST", "/paste", {"content": 42})
++        self.assertEqual(status, 400)
++        payload = json.loads(body)
++        self.assertTrue(payload["error"])
++        self.assertNotIn("id", payload)
++
++    def test_post_missing_content_still_returns_400(self) -> None:
++        status, body = self.request("POST", "/paste", {})
++        self.assertEqual(status, 400)
++        payload = json.loads(body)
++        self.assertTrue(payload["error"])
++        self.assertNotIn("id", payload)
++
++if __name__ == "__main__":
++    unittest.main()

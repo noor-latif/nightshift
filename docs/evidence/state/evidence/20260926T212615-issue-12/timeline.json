@@ -1,0 +1,56 @@
+[
+ {
+  "ts": "2026-09-26T21:26:15Z",
+  "event": "lap-start",
+  "issue": 12,
+  "run_id": "20260926T212615-issue-12"
+ },
+ {
+  "ts": "2026-09-26T21:26:17Z",
+  "event": "claimed",
+  "title": "Add DELETE /paste/<id>: 204 on delete, then the paste is gone"
+ },
+ {
+  "ts": "2026-09-26T21:27:54Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 1117
+ },
+ {
+  "ts": "2026-09-26T21:27:54Z",
+  "event": "diff-apply",
+  "ok": true,
+  "tier": "plain",
+  "detail": "applied"
+ },
+ {
+  "ts": "2026-09-26T21:28:09Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-26T21:28:21Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-26T21:28:29Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/toy-product/pull/16",
+  "merge_sha": "9045492e08337a880488ac27073963b937503c44"
+ },
+ {
+  "ts": "2026-09-26T21:28:30Z",
+  "event": "deploy",
+  "rc": 0,
+  "tail": "HEAD is now at 9045492 Implement issue 12 (#16)\nREADY\n"
+ },
+ {
+  "ts": "2026-09-26T21:28:31Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-26T21:28:31Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

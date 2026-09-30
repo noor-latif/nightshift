@@ -1,0 +1,103 @@
+diff --git a/src/supervisor.py b/src/supervisor.py
+index b2b3ca8..e0d9823 100644
+--- a/src/supervisor.py
++++ b/src/supervisor.py
+@@ -243,6 +243,7 @@ def tick(state, now, deps):
+     """One supervisor tick: health-check → reconcile → dispatch → tail."""
+     events = []
+     lap = state.get("lap")
++    idle = False
+ 
+     if lap:
+         if lap_healthy(lap, now):
+@@ -268,15 +269,11 @@ def tick(state, now, deps):
+         if d not in ("already-running",):
+             events.append("dispatch:" + d)
+             if d == "idle":
+-                issues = state.get("issues", {})
+-                blocked = [int(n) for n, r in issues.items()
+-                           if r.get("disposition") not in ("parked", "timeout-park", "merged")]
+-                parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
+-                merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
+-                if blocked:
+-                    events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
+-                else:
+-                    events.append("DRAIN:%d parked, %d merged" % (parked, merged))
++                # Decide whether the queue is drained only after reconcile has
++                # accounted for claims left by a failed dispatch. A claim
++                # created before start_lap() can make dispatch idle while the
++                # issue remains retryable.
++                idle = True
+ 
+     # reconcile: reap claims for issues with no live lap (supervisor restart)
+     observations = deps.get("reconcile_observations") or []
+@@ -287,6 +284,18 @@ def tick(state, now, deps):
+             note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
+             observations.append(note)
+             runtime_log("intervention", detail=note, claim=path)
++    if idle:
++        issues = state.get("issues", {})
++        blocked = [int(n) for n, r in issues.items()
++                   if r.get("disposition") not in ("parked", "timeout-park", "merged")]
++        parked = sum(1 for r in issues.values()
++                     if r.get("disposition") in ("parked", "timeout-park"))
++        merged = sum(1 for r in issues.values()
++                     if r.get("disposition") == "merged")
++        if blocked:
++            events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
++        else:
++            events.append("DRAIN:%d parked, %d merged" % (parked, merged))
+     save_state(state, deps["state_path"])
+     return events
+ 
+diff --git a/tests/test_supervisor.py b/tests/test_supervisor.py
+index 679db82..3659295 100644
+--- a/tests/test_supervisor.py
++++ b/tests/test_supervisor.py
+@@ -507,6 +507,46 @@ class TestReconcileDeadClaims(unittest.TestCase):
+             return supervisor.reconcile_dead_claims(1000.0, state, self.claims,
+                                                     result_path=self.result)
+ 
++    def test_tick_idle_with_fresh_open_claim_blocks_after_reconcile(self):
++        # A claim written before a dispatch spawn failure must not turn the
++        # following idle+reconcile tick into a queue-drained halt.
++        import selector
++
++        gh = os.path.join(self.tmp, "gh")
++        with open(gh, "w") as f:
++            f.write("#!%s\n" % sys.executable)
++            f.write(
++                "import sys\n"
++                "if sys.argv[1] == 'issue':\n"
++                "    print('[{\"number\": 18, \"createdAt\": \"2026-01-01T00:00:00Z\"}]')\n"
++                "else:\n"
++                "    print('[]')\n"
++            )
++        os.chmod(gh, 0o755)
++        claim_path = self.claim(18, claimed_at=self.now)
++        state = {"issues": {}, "lap": None, "started_at": None}
++        deps = {
++            "state_path": os.path.join(self.tmp, "state.json"),
++            "notify": lambda text: None,
++            "claim": lambda now: selector.claim_next(
++                "o/r", issues_dir=self.claims, now=now, gh=gh,
++                dispositions=state["issues"]),
++            "start_lap": lambda issue, lap: self.fail("fresh claim was dispatched"),
++            "kill_lap": lambda lap: None,
++            "lap_outcome": lambda lap: "crash",
++            "reconcile": lambda now: supervisor.reconcile_dead_claims(
++                now, state, self.claims, result_path=self.result),
++            "break_claim": lambda path, now: os.remove(path),
++            "reconcile_observations": [],
++        }
++        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
++            events = supervisor.tick(state, self.now, deps)
++        self.assertIn("dispatch:idle", events)
++        self.assertIn("BLOCKED:18", events)
++        self.assertFalse(any(e.startswith("DRAIN") for e in events))
++        self.assertFalse(os.path.exists(claim_path))
++        self.assertEqual(state["issues"]["18"]["retries"], 1)
++
+     def test_unaccounted_crash_counts_retries_at_reap(self):
+         # orphan claim, no terminal result anywhere: the crash must consume
+         # retry budget — never resurface as a free silent retry

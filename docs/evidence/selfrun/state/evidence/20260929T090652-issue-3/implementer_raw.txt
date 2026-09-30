@@ -1,0 +1,12 @@
+[
+  {
+    "file": "src/lap.py",
+    "find": "        if needle.endswith(\"\\n\") and len(needle) > 1:\n            end -= 1  # the anchor's final newline is a line boundary, not\n                      # content: keep the file's own trailing bytes of that line\n",
+    "replace": "        if (needle.endswith(\"\\n\") and len(needle) > 1\n                and not m[\"replace\"].endswith(\"\\n\")):\n            end -= 1  # Preserve trailing-whitespace drift when the replacement\n                      # does not provide its own line boundary.\n"
+  },
+  {
+    "file": "tests/test_lap_mutations.py",
+    "find": "    def test_anchor_miss_fails_loud_naming_file_and_prefix(self):\n        ok, detail, results = lap.apply_mutations(\n",
+    "replace": "    def test_newline_terminated_multiline_anchor_replaces_through_newline(self):\n        with open(os.path.join(self.dir, \"app.py\"), \"w\") as f:\n            f.write(\"A\\nB\\nC\\n\")\n        ok, detail, _ = lap.apply_mutations(\n            [mut(\"app.py\", \"A\\nB\\n\", \"X\\n\")], self.dir)\n        self.assertTrue(ok, detail)\n        with open(os.path.join(self.dir, \"app.py\"), \"rb\") as f:\n            self.assertEqual(f.read(), b\"X\\nC\\n\")\n\n        with open(os.path.join(self.dir, \"app.py\"), \"w\") as f:\n            f.write(\"A\\nB\\n\")\n        ok, detail, _ = lap.apply_mutations(\n            [mut(\"app.py\", \"A\\nB\\n\", \"X\\nY\\n\")], self.dir)\n        self.assertTrue(ok, detail)\n        with open(os.path.join(self.dir, \"app.py\"), \"rb\") as f:\n            self.assertEqual(f.read(), b\"X\\nY\\n\")\n\n    def test_anchor_miss_fails_loud_naming_file_and_prefix(self):\n        ok, detail, results = lap.apply_mutations(\n"
+  }
+]

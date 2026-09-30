@@ -1,0 +1,17 @@
+[
+ {
+  "file": "src/verify.py",
+  "find": "        for scenario in (data if isinstance(data, list) else [data]):\n            evidence[\"scenarios\"].append(run_scenario(scenario, checkout_cwd, pid_file))\n",
+  "replace": "        for scenario in (data if isinstance(data, list) else [data]):\n            try:\n                result = run_scenario(scenario, checkout_cwd, pid_file)\n            except Hold as e:\n                # Harness/resource unavailability is a HOLD, never a lap crash.\n                result = {\n                    \"scenario\": scenario.get(\"name\", \"unnamed\"),\n                    \"checks\": [{\"assertion\": \"scenario\", \"status\": \"HOLD\",\n                                \"detail\": str(e)}],\n                    \"verdict\": \"hold\",\n                }\n            evidence[\"scenarios\"].append(result)\n"
+ },
+ {
+  "file": "tests/test_verify.py",
+  "find": "import os\nimport sys\nimport tempfile\nimport threading\n",
+  "replace": "import os\nimport socket\nimport sys\nimport tempfile\nimport threading\n"
+ },
+ {
+  "file": "tests/test_verify.py",
+  "find": "class TestScenarioSelection(unittest.TestCase):\n",
+  "replace": "class TestVerifyScenarioHold(unittest.TestCase):\n    def test_exhausted_scenario_port_range_returns_hold(self):\n        # Bind and listen on every port in a contiguous scenario range so\n        # free_port() raises Hold while the scenario ladder is running.\n        sockets = []\n        start = None\n        for candidate in range(30000, 60000):\n            trial = []\n            try:\n                for port in range(candidate, candidate + 11):\n                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n                    sock.bind((\"127.0.0.1\", port))\n                    sock.listen(1)\n                    trial.append(sock)\n            except OSError:\n                for sock in trial:\n                    sock.close()\n                continue\n            sockets = trial\n            start = candidate\n            break\n        self.assertIsNotNone(start, \"could not reserve a contiguous 11-port range\")\n        try:\n            tmp = tempfile.mkdtemp()\n            scenarios = tempfile.mkdtemp()\n            with open(os.path.join(scenarios, \"global.json\"), \"w\") as f:\n                json.dump({\"name\": \"needs-boot\", \"assertions\": [{\n                    \"method\": \"GET\",\n                    \"url\": \"http://127.0.0.1:{{port}}/health\",\n                    \"expected_status\": 200,\n                }]}, f)\n            from unittest import mock\n            with mock.patch.object(verify, \"SCENARIO_PORT_RANGE\", (start, start + 11)), \\\n                 mock.patch.object(verify, \"DEPLOY_MODE\", \"none\"), \\\n                 mock.patch.object(verify, \"run_unit_tests\", return_value=(True, \"Ran 1 test\")):\n                evidence = verify.verify_candidate(tmp, os.path.join(tmp, \"candidate.pid\"),\n                                                   scenarios)\n            self.assertEqual(evidence[\"verdict\"], \"HOLD\")\n            self.assertEqual(evidence[\"scenarios\"][0][\"verdict\"], \"hold\")\n        finally:\n            for sock in sockets:\n                sock.close()\n\n\nclass TestScenarioSelection(unittest.TestCase):\n"
+ }
+]

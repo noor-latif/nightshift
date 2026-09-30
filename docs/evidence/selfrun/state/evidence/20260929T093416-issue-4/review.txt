@@ -1,0 +1,9 @@
+**Criterion 1 — PASS.** The repro is implemented as an equivalent in-suite test: `TestVerifyScenarioHold.test_exhausted_scenario_port_range_returns_hold` in `tests/test_verify.py` binds a contiguous 11-port range, patches `verify.SCENARIO_PORT_RANGE` to it, and asserts `verify_candidate` returns `evidence["verdict"] == "HOLD"` — no standalone file needed, and the modified file is within the allowed set.
+
+**Criterion 2 — PASS.** `run_scenario`'s provenance-env-leak path (`if PROVENANCE_ENV in os.environ: ... results["verdict"] = "hold"`) is untouched by the diff; the new try/except only wraps the call site in `verify_candidate`, so the internal hold-verdict behavior is unchanged.
+
+**Criterion 3 — PASS.** The unit-oracle early return (`if not ok: evidence["verdict"] = "fail"; return evidence`) is outside the diff's changed hunk and remains intact, so unit failure still yields `"fail"`.
+
+**Criterion 4 — PASS.** The regression test exists in `tests/test_verify.py` and provably fails pre-fix: before the diff, `run_scenario(scenario, ...)` at the old line (`evidence["scenarios"].append(run_scenario(...))`) lets `free_port`'s `Hold("no free port in scenario range")` propagate out of `verify_candidate` as an exception, so the test would error instead of returning the HOLD dict; post-fix the `except Hold` in the loop converts it to a per-scenario `"hold"` verdict, which combines with the unit "pass" status into `verdict == "HOLD"`. (Verified the test mechanics line up: `free_port` reads the module attribute `verify.SCENARIO_PORT_RANGE` so the mock takes effect, the 11-port bind matches `range(lo, hi)`, `DEPLOY_MODE="none"` skips the provenance block, and the run_unit_tests patch bypasses the empty-checkout oracle.)
+
+VERDICT: accept

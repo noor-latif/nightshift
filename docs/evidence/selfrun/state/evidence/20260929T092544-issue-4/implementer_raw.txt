@@ -1,0 +1,17 @@
+[
+  {
+    "file": "src/verify.py",
+    "find": "        for scenario in (data if isinstance(data, list) else [data]):\n            evidence[\"scenarios\"].append(run_scenario(scenario, checkout_cwd, pid_file))",
+    "replace": "        for scenario in (data if isinstance(data, list) else [data]):\n            try:\n                result = run_scenario(scenario, checkout_cwd, pid_file)\n            except Hold as e:\n                result = {\n                    \"scenario\": scenario[\"name\"],\n                    \"checks\": [{\"assertion\": \"scenario\", \"status\": \"HOLD\",\n                                 \"detail\": str(e)}],\n                    \"verdict\": \"hold\",\n                }\n            evidence[\"scenarios\"].append(result)"
+  },
+  {
+    "file": "tests/test_verify.py",
+    "find": "import json\nimport os\nimport sys",
+    "replace": "import json\nimport os\nimport socket\nimport sys"
+  },
+  {
+    "file": "tests/test_verify.py",
+    "find": "class TestExecOracle:\n",
+    "replace": "class TestVerifyHoldCapture(unittest.TestCase):\n    def test_scenario_port_exhaustion_returns_hold(self):\n        import unittest.mock as mock\n\n        candidate = tempfile.mkdtemp()\n        with open(os.path.join(candidate, \"a_test.py\"), \"w\") as f:\n            f.write(\"import unittest\\nclass T(unittest.TestCase):\\n    def test_x(self): pass\\n\")\n        scenarios = tempfile.mkdtemp()\n        with open(os.path.join(scenarios, \"global.json\"), \"w\") as f:\n            json.dump({\"name\": \"port-exhausted\", \"assertions\": [{\n                \"method\": \"GET\",\n                \"url\": \"http://127.0.0.1:{{port}}/health\",\n                \"expected_status\": 200,\n            }]}, f)\n\n        sockets = []\n        try:\n            for port in range(*verify.SCENARIO_PORT_RANGE):\n                sock = socket.socket()\n                sock.bind((\"127.0.0.1\", port))\n                sock.listen(1)\n                sockets.append(sock)\n            with mock.patch.dict(os.environ):\n                os.environ.pop(verify.PROVENANCE_ENV, None)\n                evidence = verify.verify_candidate(\n                    candidate, os.path.join(candidate, \"probe.pid\"), scenarios)\n        finally:\n            for sock in sockets:\n                sock.close()\n\n        self.assertEqual(evidence[\"verdict\"], \"HOLD\")\n\n\nclass TestExecOracle:\n"
+  }
+]

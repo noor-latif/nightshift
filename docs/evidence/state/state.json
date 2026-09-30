@@ -1,0 +1,22 @@
+{
+ "issues": {
+  "17": {
+   "retries": 1,
+   "disposition": "merged"
+  },
+  "18": {
+   "retries": 0,
+   "disposition": "merged"
+  },
+  "19": {
+   "retries": 0,
+   "disposition": "merged"
+  },
+  "21": {
+   "retries": 0,
+   "disposition": "merged"
+  }
+ },
+ "lap": null,
+ "started_at": 1790632419.5554543
+}

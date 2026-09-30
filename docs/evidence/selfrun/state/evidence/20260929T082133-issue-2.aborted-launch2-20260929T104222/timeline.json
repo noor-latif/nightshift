@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-29T08:21:33Z",
+  "event": "lap-start",
+  "issue": 2,
+  "run_id": "20260929T082133-issue-2"
+ },
+ {
+  "ts": "2026-09-29T08:21:37Z",
+  "event": "claimed",
+  "title": "tick() can emit DRAIN while an open issue's claim exists, halting the session 'drained' with work left"
+ },
+ {
+  "ts": "2026-09-29T08:24:29Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 5859
+ },
+ {
+  "ts": "2026-09-29T08:24:29Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 4 mutations"
+ },
+ {
+  "ts": "2026-09-29T08:25:22Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "review"
+ }
+]

@@ -1,0 +1,54 @@
+[
+ {
+  "ts": "2026-09-29T08:55:40Z",
+  "event": "lap-start",
+  "issue": 2,
+  "run_id": "20260929T085540-issue-2"
+ },
+ {
+  "ts": "2026-09-29T08:55:40Z",
+  "event": "claimed",
+  "title": "tick() can emit DRAIN while an open issue's claim exists, halting the session 'drained' with work left"
+ },
+ {
+  "ts": "2026-09-29T09:03:53Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 4384
+ },
+ {
+  "ts": "2026-09-29T09:03:53Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 4 mutations"
+ },
+ {
+  "ts": "2026-09-29T09:04:26Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-29T09:04:32Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-29T09:04:41Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/nightshift/pull/8",
+  "merge_sha": "82879696ae2b41157c3380d1e07d9e94085c41f1"
+ },
+ {
+  "ts": "2026-09-29T09:04:41Z",
+  "event": "deploy-skip",
+  "mode": "none"
+ },
+ {
+  "ts": "2026-09-29T09:04:44Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-29T09:04:44Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

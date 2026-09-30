@@ -1,0 +1,6 @@
+{"ts": "2026-09-28T20:39:30Z", "event": "session-start", "pid": 265144}
+{"ts": "2026-09-28T20:39:44Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T20:39:44Z", "event": "dispatch", "issue": 17, "pid": 265410}
+{"ts": "2026-09-28T20:39:44Z", "event": "intervention", "detail": "orphan claim reaped with no terminal result (crash counted at reap): state/claims/issue-17.json", "issue": 17, "disposition": "retry"}
+{"ts": "2026-09-28T20:39:49Z", "event": "intervention", "detail": "orphan claim reaped with no terminal result (crash counted at reap): state/claims/issue-17.json", "issue": 17, "disposition": "retry"}
+{"ts": "2026-09-28T20:39:54Z", "event": "intervention", "detail": "orphan claim reaped with no terminal result (crash counted at reap): state/claims/issue-17.json", "issue": 17, "disposition": "parked"}

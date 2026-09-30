@@ -1,0 +1,54 @@
+[
+ {
+  "ts": "2026-09-29T09:15:03Z",
+  "event": "lap-start",
+  "issue": 3,
+  "run_id": "20260929T091503-issue-3"
+ },
+ {
+  "ts": "2026-09-29T09:15:04Z",
+  "event": "claimed",
+  "title": "apply_mutations() inserts a spurious blank line on newline-terminated anchors"
+ },
+ {
+  "ts": "2026-09-29T09:19:57Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 2148
+ },
+ {
+  "ts": "2026-09-29T09:19:57Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 2 mutations"
+ },
+ {
+  "ts": "2026-09-29T09:23:24Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-29T09:23:29Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-29T09:23:37Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/nightshift/pull/9",
+  "merge_sha": "a4b35b1de24c1857c700b974a20c62b94ea2e53c"
+ },
+ {
+  "ts": "2026-09-29T09:23:37Z",
+  "event": "deploy-skip",
+  "mode": "none"
+ },
+ {
+  "ts": "2026-09-29T09:23:39Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-29T09:23:39Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

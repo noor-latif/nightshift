@@ -1,0 +1,9 @@
+**Criterion 1:** PASS — diff adds `if content == "":` returning `400 {"error": "'content' must be a non-empty string"}` before `store.create`, so no `id` is minted.
+
+**Criterion 2:** PASS — the new check is equality with `""` only; `"x"` (or any non-empty string) falls through to the existing `201 {"id": ...}` path.
+
+**Criterion 3:** PASS — the existing `isinstance(content, str)` check is unchanged, so `{"content": 42}` and missing content still hit the pre-existing 400 branch.
+
+**Criterion 4:** FAIL — diff touches only `app.py`; no test file is added or modified, so the requirement for a new unit test file covering criteria 1–3 is unmet.
+
+VERDICT: reject

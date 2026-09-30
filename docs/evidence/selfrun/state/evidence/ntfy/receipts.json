@@ -1,0 +1,11 @@
+{"ts": "2026-09-29T08:55:29Z", "status": 200, "message": "lap issue 2: FAILURE (retry)"}
+{"ts": "2026-09-29T09:06:40Z", "status": 200, "message": "lap issue 2: GREEN"}
+{"ts": "2026-09-29T09:14:52Z", "status": 200, "message": "lap issue 3: FAILURE (retry)"}
+{"ts": "2026-09-29T09:25:33Z", "status": 200, "message": "lap issue 3: GREEN"}
+{"ts": "2026-09-29T09:34:05Z", "status": 200, "message": "lap issue 4: FAILURE (retry)"}
+{"ts": "2026-09-29T09:38:11Z", "status": 200, "message": "lap issue 4: GREEN"}
+{"ts": "2026-09-29T09:42:18Z", "status": 200, "message": "lap issue 5: GREEN"}
+{"ts": "2026-09-29T09:49:10Z", "status": 200, "message": "lap issue 6: FAILURE (retry)"}
+{"ts": "2026-09-29T09:54:57Z", "status": 200, "message": "lap issue 6: FAILURE (retry)"}
+{"ts": "2026-09-29T09:59:54Z", "status": 200, "message": "lap issue 6: FAILURE (parked)"}
+{"ts": "2026-09-29T10:00:00Z", "status": 200, "message": "queue drained: 1 parked, 4 merged"}

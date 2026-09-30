@@ -1,0 +1,15 @@
+diff --git a/app.py b/app.py
+index 8b38e64..6b74a7b 100644
+--- a/app.py
++++ b/app.py
+@@ -60,6 +60,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if self.path != "/paste":
+             self._not_found()
+             return
++        raw_length = self.headers.get("Content-Length")
++        if raw_length is None or raw_length.strip() == "":
++            self._send_json(411, {"error": "Content-Length required"})
++            return
+         try:
+             body = json.loads(self._read_body())
+         except (ValueError, UnicodeDecodeError):

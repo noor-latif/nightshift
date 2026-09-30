@@ -1,0 +1,7 @@
+**Criterion 1 — PASS:** Diff adds `elif path == "/stats": self._send_json(200, {"pastes": self.store.count})`, so GET /stats returns 200 with a JSON body containing the `"pastes"` key.
+
+**Criterion 2 — PASS:** The `/stats` branch is reached regardless of prior POSTs, and `count` returns `len(self._pastes)` (2 after two creations); the response remains 200 with `"pastes"` present. No changes to POST /paste affect this path.
+
+**Criterion 3 — PASS:** The `/health` branch (`self._send_json(200, {"status": "ok", "revision": current_revision()})`) appears as unchanged context; the new `elif` is additive and doesn't alter it.
+
+VERDICT: accept

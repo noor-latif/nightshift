@@ -1,0 +1,9 @@
+{"id":"hrOje4iOudLJ","time":1790331353,"expires":1790374553,"event":"message","topic":"[redacted-ntfy-topic]","message":"{\"topic\": \"[redacted-ntfy-topic]\", \"title\": \"nightshift\", \"message\": \"lap issue 6: FAILURE (retry)\"}"}
+{"id":"MYcjAjvBUycv","time":1790331564,"expires":1790374764,"event":"message","topic":"[redacted-ntfy-topic]","message":"{\"topic\": \"[redacted-ntfy-topic]\", \"title\": \"nightshift\", \"message\": \"lap issue 6: FAILURE (retry)\"}"}
+{"id":"y76L1lTIn0ae","time":1790331706,"expires":1790374906,"event":"message","topic":"[redacted-ntfy-topic]","message":"{\"topic\": \"[redacted-ntfy-topic]\", \"title\": \"nightshift\", \"message\": \"lap issue 6: FAILURE (parked)\"}"}
+{"id":"MIws8Ku91HFa","time":1790331706,"expires":1790374906,"event":"message","topic":"[redacted-ntfy-topic]","message":"{\"topic\": \"[redacted-ntfy-topic]\", \"title\": \"nightshift\", \"message\": \"supervisor HALT: failure:parked,HALT\"}"}
+{"ts": "2026-09-28T20:12:19Z", "status": 200, "message": "x"}
+{"ts": "2026-09-28T20:12:19Z", "status": "no-transport", "message": "x"}
+{"ts": "2026-09-28T20:12:19Z", "status": 200, "message": "x"}
+{"ts": "2026-09-28T20:12:19Z", "status": "no-transport", "message": "queue blocked: issue 9 open PR or live claim"}
+{"ts": "2026-09-28T20:12:19Z", "status": "no-transport", "message": "queue drained: 0 parked, 0 merged"}

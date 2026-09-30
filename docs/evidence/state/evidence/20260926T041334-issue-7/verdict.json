@@ -1,0 +1,7 @@
+{
+ "verdict": "fail",
+ "outcome": "failure",
+ "gate": "diff-apply",
+ "caught_confabulation": "diff did not apply to a clean checkout",
+ "error": "error: corrupt patch at /tmp/tmpe3oq33l0.patch:20"
+}

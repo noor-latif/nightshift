@@ -1,0 +1,54 @@
+[
+ {
+  "ts": "2026-09-29T09:34:16Z",
+  "event": "lap-start",
+  "issue": 4,
+  "run_id": "20260929T093416-issue-4"
+ },
+ {
+  "ts": "2026-09-29T09:34:17Z",
+  "event": "claimed",
+  "title": "Hold from the scenario ladder escapes verify_candidate() as a raw exception, burning retry budget on infra failure"
+ },
+ {
+  "ts": "2026-09-29T09:34:45Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 3265
+ },
+ {
+  "ts": "2026-09-29T09:34:45Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 3 mutations"
+ },
+ {
+  "ts": "2026-09-29T09:35:51Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-29T09:35:57Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-29T09:36:06Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/nightshift/pull/10",
+  "merge_sha": "e8fc858ec8848332c5c3c2852cc5e14a20b8bf16"
+ },
+ {
+  "ts": "2026-09-29T09:36:06Z",
+  "event": "deploy-skip",
+  "mode": "none"
+ },
+ {
+  "ts": "2026-09-29T09:36:08Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-29T09:36:08Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

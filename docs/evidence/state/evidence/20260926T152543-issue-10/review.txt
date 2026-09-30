@@ -1,0 +1,9 @@
+**Criterion 1 — 411 on missing/empty Content-Length:** PASS. The diff adds `raw_length = self.headers.get("Content-Length")` and returns `self._send_json(411, {"error": "Content-Length required"})` when it is `None` or `.strip() == ""`, before `_read_body` is ever called — so the misleading `400 invalid JSON body` path can no longer fire for a lengthless body.
+
+**Criterion 2 — no regression for valid Content-Length:** PASS. The guard only triggers on `None`/empty; any present, non-empty header value falls through to the original `json.loads(self._read_body())` code path unchanged (malformed values deliberately remain out of scope per the criteria).
+
+**Criterion 3 — GETs unaffected:** PASS. The added guard sits in the POST handler after the `self.path != "/paste"` check; no GET handler (`/health`, `/paste/<id>`) is touched by the diff.
+
+**Criterion 4 — new unit test file covering criteria 1–3:** FAIL. The diff touches only `app.py`; there is no test file addition (raw socket or `http.client` with header suppression) anywhere in the provided diff, so the required test coverage is absent.
+
+VERDICT: reject

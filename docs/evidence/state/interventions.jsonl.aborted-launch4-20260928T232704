@@ -1,0 +1,5 @@
+{"ts": "2026-09-28T21:14:50Z", "event": "session-start", "pid": 281259}
+{"ts": "2026-09-28T21:15:05Z", "event": "red-recheck", "issue": 18, "verdict": "fail"}
+{"ts": "2026-09-28T21:15:05Z", "event": "dispatch", "issue": 18, "pid": 281528}
+{"ts": "2026-09-28T21:19:20Z", "event": "lap-end", "issue": 18, "outcome": "success", "disposition": "merged", "gate": null}
+{"ts": "2026-09-28T21:19:20Z", "event": "lap-check", "issue": 18, "observed": []}

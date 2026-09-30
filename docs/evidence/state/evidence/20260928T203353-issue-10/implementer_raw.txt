@@ -1,0 +1,22 @@
+[
+  {
+    "file": "app.py",
+    "find": "    def do_POST(self) -> None:\n        if self.path != \"/paste\":\n            self._not_found()\n            return\n        try:\n            body = json.loads(self._read_body())",
+    "replace": "    def do_POST(self) -> None:\n        if self.path != \"/paste\":\n            self._not_found()\n            return\n        if not self.headers.get(\"Content-Length\"):\n            self._send_json(411, {\"error\": \"Content-Length required\"})\n            return\n        try:\n            body = json.loads(self._read_body())"
+  },
+  {
+    "file": "app_test.py",
+    "find": "import json\nimport os",
+    "replace": "import http.client\nimport json\nimport os"
+  },
+  {
+    "file": "app_test.py",
+    "find": "        except urllib.error.HTTPError as e:\n            return e.code, e.read()\n\n    def test_post_returns_201_with_non_empty_id(self) -> None:",
+    "replace": "        except urllib.error.HTTPError as e:\n            return e.code, e.read()\n\n    def raw_request(\n        self, method: str, path: str, headers: dict[str, str], body: bytes = b\"\"\n    ) -> tuple[int, bytes]:\n        connection = http.client.HTTPConnection(\"127.0.0.1\", self.port)\n        try:\n            connection.putrequest(method, path)\n            for name, value in headers.items():\n                connection.putheader(name, value)\n            connection.endheaders(body)\n            response = connection.getresponse()\n            return response.status, response.read()\n        finally:\n            connection.close()\n\n    def test_post_returns_201_with_non_empty_id(self) -> None:"
+  },
+  {
+    "file": "app_test.py",
+    "find": "if __name__ == \"__main__\":\n    unittest.main()",
+    "replace": "    def test_post_without_or_with_empty_content_length_returns_411(self) -> None:\n        body = b'{\"content\": \"no length\"}'\n        for headers in ({}, {\"Content-Length\": \"\"}):\n            with self.subTest(headers=headers):\n                status, response_body = self.raw_request(\"POST\", \"/paste\", headers, body)\n                self.assertEqual(status, 411)\n                self.assertIn(b\"Content-Length required\", response_body)\n\n    def test_post_with_content_length_and_get_requests_work(self) -> None:\n        body = b'{\"content\": \"with length\"}'\n        status, response_body = self.raw_request(\n            \"POST\",\n            \"/paste\",\n            {\"Content-Length\": str(len(body)), \"Content-Type\": \"application/json\"},\n            body,\n        )\n        self.assertEqual(status, 201)\n        paste_id = json.loads(response_body)[\"id\"]\n\n        status, _ = self.raw_request(\"GET\", \"/health\", {})\n        self.assertEqual(status, 200)\n        status, response_body = self.raw_request(\"GET\", f\"/paste/{paste_id}\", {})\n        self.assertEqual(status, 200)\n        self.assertEqual(json.loads(response_body), {\"content\": \"with length\"})\n\n\nif __name__ == \"__main__\":\n    unittest.main()"
+  }
+]

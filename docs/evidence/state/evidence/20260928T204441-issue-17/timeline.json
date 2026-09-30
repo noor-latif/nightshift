@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-28T20:44:41Z",
+  "event": "lap-start",
+  "issue": 17,
+  "run_id": "20260928T204441-issue-17"
+ },
+ {
+  "ts": "2026-09-28T20:44:42Z",
+  "event": "claimed",
+  "title": "POST /paste with a query string returns 404 instead of creating a paste"
+ },
+ {
+  "ts": "2026-09-28T20:44:54Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 327
+ },
+ {
+  "ts": "2026-09-28T20:44:54Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 1 mutations"
+ },
+ {
+  "ts": "2026-09-28T20:45:24Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "review"
+ }
+]

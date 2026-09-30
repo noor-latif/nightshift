@@ -1,0 +1,96 @@
+commit <sha> (branch agent/issue-7)
+diff --git a/app.py b/app.py
+--- a/app.py
++++ b/app.py
+@@ -62,7 +62,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+ 
+     def _read_body(self) -> str:
+-        length = int(self.headers.get("Content-Length") or 0)
++        raw_length = self.headers.get("Content-Length") or "0"
++        try:
++            length = int(raw_length)
++        except ValueError:
++            # Present but non-numeric header: a client error, not a crash.
++            # Re-raised as ValueError so do_POST's existing handler answers
++            # 400 {"error": "invalid JSON body"} for any caller.
++            raise ValueError("malformed Content-Length header") from None
+         return self.rfile.read(length).decode("utf-8")
+ 
+     def _not_found(self) -> None:
+diff --git a/content_length_test.py b/content_length_test.py
+new file mode 100644
+--- /dev/null
++++ b/content_length_test.py
+@@ -0,0 +1,63 @@
++"""Tests for malformed Content-Length handling on POST /paste."""
++from __future__ import annotations
++
++import http.client
++import json
++import threading
++import unittest
++import urllib.request
++
++import app
++
++
++class ContentLengthHeaderTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.server = app.make_server(0)
++        self.port = self.server.server_address[1]
++        threading.Thread(target=self.server.serve_forever, daemon=True).start()
++        self.addCleanup(self.server.shutdown)
++        self.addCleanup(self.server.server_close)
++
++    def _post_raw(
++        self, content_length: str | None, body: bytes | None
++    ) -> tuple[int, str | None, bytes]:
++        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
++        self.addCleanup(conn.close)
++        conn.putrequest("POST", "/paste")
++        if content_length is not None:
++            conn.putheader("Content-Length", content_length)
++        conn.endheaders()
++        if body:
++            conn.send(body)
++        resp = conn.getresponse()
++        return resp.status, resp.getheader("Content-Type"), resp.read()
++
++    def test_non_numeric_content_length_gets_400_json_error(self) -> None:
++        status, ctype, body = self._post_raw("abc", b"x=1")
++        self.assertEqual(status, 400)
++        self.assertTrue(ctype and ctype.startswith("application/json"))
++        payload = json.loads(body)
++        self.assertIn("error", payload)
++        self.assertTrue(payload["error"])
++
++    def test_server_survives_malformed_header_request(self) -> None:
++        status, _, _ = self._post_raw("abc", b"x=1")
++        self.assertEqual(status, 400)
++        req = urllib.request.Request(
++            f"http://127.0.0.1:{self.port}/paste",
++            data=json.dumps({"content": "after"}).encode("utf-8"),
++            method="POST",
++        )
++        with urllib.request.urlopen(req) as resp:
++            self.assertEqual(resp.status, 201)
++
++    def test_missing_content_length_unchanged_invalid_json_body(self) -> None:
++        status, _, body = self._post_raw(None, None)
++        self.assertEqual(status, 400)
++        self.assertEqual(json.loads(body), {"error": "invalid JSON body"})
++
++    def test_valid_content_length_round_trip_unchanged(self) -> None:
++        payload = json.dumps({"content": "hello"}).encode("utf-8")
++        status, _, body = self._post_raw(str(len(payload)), payload)
++        self.assertEqual(status, 201)
++        paste_id = json.loads(body)["id"]
++        with urllib.request.urlopen(
++            f"http://127.0.0.1:{self.port}/paste/{paste_id}"
++        ) as resp:
++            self.assertEqual(resp.status, 200)
++            self.assertEqual(json.loads(resp.read()), {"content": "hello"})
++
++
++if __name__ == "__main__":
++    unittest.main()

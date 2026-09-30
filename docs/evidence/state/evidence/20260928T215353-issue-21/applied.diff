@@ -1,0 +1,15 @@
+diff --git a/app.py b/app.py
+index 24faec0..128494a 100644
+--- a/app.py
++++ b/app.py
+@@ -85,6 +85,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if not isinstance(content, str):
+             self._send_json(400, {"error": "'content' must be a string"})
+             return
++        if content == "":
++            self._send_json(400, {"error": "'content' must not be empty"})
++            return
++
+         self._send_json(201, {"id": self.store.create(content)})
+ 
+     def do_DELETE(self) -> None:

@@ -1,0 +1,16 @@
+{"ts": "2026-09-28T21:43:12Z", "event": "session-start", "pid": 292607}
+{"ts": "2026-09-28T21:43:12Z", "event": "lap-end", "issue": 17, "outcome": "crash", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T21:43:12Z", "event": "lap-check", "issue": 17, "observed": []}
+{"ts": "2026-09-28T21:43:34Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T21:43:34Z", "event": "dispatch", "issue": 17, "pid": 292892}
+{"ts": "2026-09-28T21:46:19Z", "event": "lap-end", "issue": 17, "outcome": "success", "disposition": "merged", "gate": null}
+{"ts": "2026-09-28T21:46:19Z", "event": "lap-check", "issue": 17, "observed": []}
+{"ts": "2026-09-28T21:46:39Z", "event": "red-recheck", "issue": 19, "verdict": "fail"}
+{"ts": "2026-09-28T21:46:39Z", "event": "dispatch", "issue": 19, "pid": 294123}
+{"ts": "2026-09-28T21:53:34Z", "event": "lap-end", "issue": 19, "outcome": "success", "disposition": "merged", "gate": null}
+{"ts": "2026-09-28T21:53:34Z", "event": "lap-check", "issue": 19, "observed": []}
+{"ts": "2026-09-28T21:53:53Z", "event": "red-recheck", "issue": 21, "verdict": "fail"}
+{"ts": "2026-09-28T21:53:53Z", "event": "dispatch", "issue": 21, "pid": 296849}
+{"ts": "2026-09-28T21:56:48Z", "event": "lap-end", "issue": 21, "outcome": "success", "disposition": "merged", "gate": null}
+{"ts": "2026-09-28T21:56:48Z", "event": "lap-check", "issue": 21, "observed": []}
+{"ts": "2026-09-28T21:56:55Z", "event": "session-halt", "reason": "drained", "events": ["dispatch:idle", "DRAIN:0 parked, 4 merged"]}

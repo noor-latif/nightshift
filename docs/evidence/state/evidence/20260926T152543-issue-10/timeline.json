@@ -1,0 +1,32 @@
+[
+ {
+  "ts": "2026-09-26T15:25:43Z",
+  "event": "lap-start",
+  "issue": 10,
+  "run_id": "20260926T152543-issue-10"
+ },
+ {
+  "ts": "2026-09-26T15:25:44Z",
+  "event": "claimed",
+  "title": "POST /paste with a valid JSON body but no Content-Length header misreports 400 \"invalid JSON body\""
+ },
+ {
+  "ts": "2026-09-26T15:29:00Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 4736
+ },
+ {
+  "ts": "2026-09-26T15:29:00Z",
+  "event": "diff-apply",
+  "ok": true,
+  "tier": "plain",
+  "detail": "applied"
+ },
+ {
+  "ts": "2026-09-26T15:29:12Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "review"
+ }
+]

@@ -1,0 +1,13 @@
+{"ts": "2026-09-28T20:42:01Z", "event": "session-start", "pid": 266450}
+{"ts": "2026-09-28T20:42:16Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T20:42:16Z", "event": "dispatch", "issue": 17, "pid": 266683}
+{"ts": "2026-09-28T20:44:21Z", "event": "lap-end", "issue": 17, "outcome": "crash", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:44:21Z", "event": "lap-check", "issue": 17, "observed": []}
+{"ts": "2026-09-28T20:44:40Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T20:44:40Z", "event": "dispatch", "issue": 17, "pid": 267444}
+{"ts": "2026-09-28T20:47:25Z", "event": "lap-end", "issue": 17, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:47:25Z", "event": "lap-check", "issue": 17, "observed": []}
+{"ts": "2026-09-28T20:47:45Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T20:47:45Z", "event": "dispatch", "issue": 17, "pid": 268428}
+{"ts": "2026-09-28T20:50:20Z", "event": "lap-end", "issue": 17, "outcome": "failure", "disposition": "parked", "gate": null}
+{"ts": "2026-09-28T20:50:20Z", "event": "lap-check", "issue": 17, "observed": []}

@@ -1,0 +1,127 @@
+Looking at this:
+
+1. **Root cause:** `_read_body` coerces a missing/empty `Content-Length` to 0, reads zero bytes, and `do_POST` then misreports `400 invalid JSON body` even though the body was never read.
+
+2. **Fix:** In `do_POST`, before parsing the body, check the raw `Content-Length` header value. If absent (`None`) or empty/whitespace-only (`''` — same code path as absent per `int(v or 0)`), respond `411 {"error": "Content-Length required"}` per RFC 7230 §3.3.3. The check goes after the `/paste` path check so 404 routing is unchanged, and only touches POST — GET handlers never call `_read_body`, so criterion 3 is satisfied without touching `do_GET`.
+
+3. **No regression:** Any POST with a present, parseable `Content-Length` skips the new branch entirely and hits the original `json.loads` path, so 201/400 behavior is byte-identical. Malformed header *values* (non-numeric) stay out of scope per the issue (parked as #7) — the check only tests for absence/emptiness.
+
+4. **Tests:** New file `paste_content_length_test.py` covering:
+   - Empty `Content-Length` header via `http.client` with explicit header suppression (auto length skipped since caller supplies `Content-Length`, empty value goes on the wire verbatim) → 411 + fragment.
+   - Truly absent header via raw socket with a valid JSON body sent anyway → 411 (server responds without reading; safe, no hang).
+   - Explicit correct `Content-Length` via `http.client` → 201 with `"id"` (criterion 2).
+   - GET `/health` without any `Content-Length` → 200 (criterion 3).
+
+5. **Client/server interplay for the 411 path:** the client sends the body bytes the server never reads; the server responds 411 and closes, and the test closes the connection, so no deadlock. Timeouts set defensively.
+
+```diff
+--- app.py
++++ app.py
+@@ -60,6 +60,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+     def do_POST(self) -> None:
+         if self.path != "/paste":
+             self._not_found()
+             return
++        raw_length = self.headers.get("Content-Length")
++        if raw_length is None or raw_length.strip() == "":
++            self._send_json(411, {"error": "Content-Length required"})
++            return
+         try:
+             body = json.loads(self._read_body())
+         except (ValueError, UnicodeDecodeError):
+```
+
+```diff
+--- /dev/null
++++ paste_content_length_test.py
++"""Unit tests for Content-Length framing on POST /paste (RFC 7230 §3.3.3)."""
++from __future__ import annotations
++
++import http.client
++import json
++import socket
++import threading
++import unittest
++import urllib.error
++import urllib.request
++
++import app
++
++
++class PasteContentLengthTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.server = app.make_server(0)
++        self.port = self.server.server_address[1]
++        threading.Thread(target=self.server.serve_forever, daemon=True).start()
++        self.addCleanup(self.server.shutdown)
++        self.addCleanup(self.server.server_close)
++
++    def test_post_with_empty_content_length_returns_411(self) -> None:
++        # Supplying "Content-Length" suppresses http.client's auto-set, so an
++        # empty value goes on the wire verbatim (same code path as absent).
++        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
++        try:
++            conn.request(
++                "POST",
++                "/paste",
++                body=json.dumps({"content": "no length"}).encode("utf-8"),
++                headers={"Content-Length": ""},
++            )
++            resp = conn.getresponse()
++            body = resp.read()
++        finally:
++            conn.close()
++        self.assertEqual(resp.status, 411)
++        self.assertIn(b"Content-Length required", body)
++
++    def test_post_with_absent_content_length_returns_411(self) -> None:
++        body = json.dumps({"content": "absent length"}).encode("utf-8")
++        request = (
++            b"POST /paste HTTP/1.0\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"\r\n"
++        ) + body
++        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
++            sock.sendall(request)
++            chunks: list[bytes] = []
++            while True:
++                chunk = sock.recv(4096)
++                if not chunk:
++                    break
++                chunks.append(chunk)
++        raw = b"".join(chunks)
++        self.assertTrue(raw.startswith(b"HTTP/1.0 411") or raw.startswith(b"HTTP/1.1 411"))
++        self.assertIn(b"Content-Length required", raw)
++
++    def test_post_with_correct_content_length_still_creates_paste(self) -> None:
++        body = json.dumps({"content": "with length"}).encode("utf-8")
++        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
++        try:
++            conn.request(
++                "POST",
++                "/paste",
++                body=body,
++                headers={"Content-Length": str(len(body))},
++            )
++            resp = conn.getresponse()
++            payload = resp.read()
++        finally:
++            conn.close()
++        self.assertEqual(resp.status, 201)
++        self.assertIn(b'"id"', payload)
++        self.assertTrue(json.loads(payload)["id"])
++
++    def test_get_requests_unaffected_by_content_length_rule(self) -> None:
++        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/health")
++        try:
++            with urllib.request.urlopen(req, timeout=5) as resp:
++                status, payload = resp.status, resp.read()
++        except urllib.error.HTTPError as e:
++            status, payload = e.code, e.read()
++        self.assertEqual(status, 200)
++        self.assertEqual(json.loads(payload)["status"], "ok")
++
++
++if __name__ == "__main__":
++    unittest.main()
+```

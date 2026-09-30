@@ -1,0 +1,11 @@
+**Criterion 1 — PASS.** With file `A\nB\nC\n` and needle `A\nB\n`: `hay_idx=[0,1,2,3,4,5]`, so `hay_idx[3]==hay_idx[2]+1` (3==2+1) → the new guard is false, no `end -= 1`; `b = hay_idx[3]+1 = 4` gives `text[:0]+"X\n"+text[4:] == "X\nC\n"`. The old code's unconditional `end -= 1` produced `b=3` → `"X\n\nC\n"`, matching the stated pre-fix failure; the new condition fixes exactly that.
+
+**Criterion 2 — PASS.** Whole-file case: `hay_idx=[0,1,2,3]` for `"A\nB\n"`, `hay_idx[3]==hay_idx[2]+1` → guard false, `b=hay_idx[3]+1=4` → output `"X\nY\n"` exactly.
+
+**Criterion 3 — PASS.** Single-line anchor `'x = 1'` doesn't end with `"\n"`, so the condition short-circuits and the splice path is byte-identical to the old code (`b=hay_idx[end-1]+1`). For trailing-whitespace drift (`find="x = 1\n"` vs file `"x = 1   \n"`): `hay_idx[5]=8 != hay_idx[4]+1=5` → `end -= 1`, `b=hay_idx[4]+1=5`, yielding `"x = 3" + "   \n"` — the same result the old unconditional `end -= 1` produced, so `test_trailing_whitespace_drift_tolerated_both_directions` semantics are preserved.
+
+**Criterion 4 — PASS.** `tests/test_lap_mutations.py` adds `test_newline_terminated_anchor_consumes_newline` asserting exact bytes `b"X\nC\n"`; on pre-fix code `end -= 1` gives `b=hay_idx[2]+1=3` → `"X\n\nC\n"`, so the assertion fails on the old code and passes on the new — a true red/green regression test.
+
+No existing behavior is plausibly broken: the change only alters the `end` adjustment when normalization dropped bytes before the anchor's final newline, and in that case it reproduces the old splice point (`b` lands after the last contiguous char, before the source's preserved bytes).
+
+VERDICT: accept

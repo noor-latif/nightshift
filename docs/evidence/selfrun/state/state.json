@@ -1,0 +1,26 @@
+{
+ "issues": {
+  "2": {
+   "retries": 1,
+   "disposition": "merged"
+  },
+  "3": {
+   "retries": 1,
+   "disposition": "merged"
+  },
+  "4": {
+   "retries": 1,
+   "disposition": "merged"
+  },
+  "5": {
+   "retries": 0,
+   "disposition": "merged"
+  },
+  "6": {
+   "retries": 3,
+   "disposition": "parked"
+  }
+ },
+ "lap": null,
+ "started_at": 1790675702.049617
+}

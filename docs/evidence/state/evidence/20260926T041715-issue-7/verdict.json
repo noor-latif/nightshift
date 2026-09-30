@@ -1,0 +1,7 @@
+{
+ "verdict": "fail",
+ "outcome": "failure",
+ "gate": "diff-apply",
+ "caught_confabulation": "diff did not apply to a clean checkout",
+ "error": "error: patch fragment without header at /tmp/tmprdlrerxj.patch:17: @@ -43,16 +47,20 @@ class PasteHandler(BaseHTTPRequestHandler):"
+}

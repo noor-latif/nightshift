@@ -1,0 +1,131 @@
+--- a/app.py
++++ b/app.py
+@@ -63,6 +63,10 @@
+             self._not_found()
+             return
++        content_length = self.headers.get("Content-Length")
++        if content_length is None or content_length == "":
++            self._send_json(411, {"error": "Content-Length required"})
++            return
+         try:
+             body = json.loads(self._read_body())
+         except (ValueError, UnicodeDecodeError):
+
+--- /dev/null
++++ b/body_framing_test.py
+@@ -0,0 +1,99 @@
++"""Unit tests for POST body framing and Content-Length handling."""
++from __future__ import annotations
++
++import http.client
++import json
++import socket
++import threading
++import unittest
++
++import app
++
++
++class BodyFramingTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.server = app.make_server(0)
++        self.port = self.server.server_address[1]
++        threading.Thread(target=self.server.serve_forever, daemon=True).start()
++        self.addCleanup(self.server.shutdown)
++        self.addCleanup(self.server.server_close)
++
++    def _request(
++        self,
++        method: str,
++        path: str,
++        body: bytes | None = None,
++        headers: dict[str, str] | None = None,
++    ) -> tuple[int, bytes]:
++        connection = http.client.HTTPConnection(
++            "127.0.0.1", self.port, timeout=2
++        )
++        try:
++            connection.request(method, path, body=body, headers=headers or {})
++            response = connection.getresponse()
++            return response.status, response.read()
++        finally:
++            connection.close()
++
++    def _raw_post(
++        self, headers: bytes, body: bytes
++    ) -> tuple[int, bytes]:
++        request = (
++            b"POST /paste HTTP/1.0\r\n"
++            b"Host: 127.0.0.1\r\n"
++            + headers
++            + b"\r\n"
++            + body
++        )
++        with socket.create_connection(("127.0.0.1", self.port), timeout=2) as sock:
++            sock.sendall(request)
++            response = http.client.HTTPResponse(sock)
++            response.begin()
++            return response.status, response.read()
++
++    def test_post_without_content_length_returns_411(self) -> None:
++        body = b'{"content":"no length"}'
++        status, response_body = self._raw_post(
++            b"Content-Type: application/json\r\n", body
++        )
++        self.assertEqual(status, 411)
++        self.assertIn(b"Content-Length required", response_body)
++
++    def test_post_with_empty_content_length_returns_411(self) -> None:
++        body = b'{"content":"no length"}'
++        status, response_body = self._raw_post(
++            b"Content-Type: application/json\r\nContent-Length: \r\n", body
++        )
++        self.assertEqual(status, 411)
++        self.assertIn(b"Content-Length required", response_body)
++
++    def test_post_with_content_length_preserves_existing_behavior(self) -> None:
++        body = b'{"content":"with length"}'
++        status, response_body = self._request(
++            "POST",
++            "/paste",
++            body,
++            {
++                "Content-Type": "application/json",
++                "Content-Length": str(len(body)),
++            },
++        )
++        self.assertEqual(status, 201)
++        self.assertIn(b'"id"', response_body)
++
++        invalid_body = b"not json"
++        status, response_body = self._request(
++            "POST",
++            "/paste",
++            invalid_body,
++            {"Content-Length": str(len(invalid_body))},
++        )
++        self.assertEqual(status, 400)
++        self.assertIn(b"invalid JSON body", response_body)
++
++    def test_get_requests_are_unaffected(self) -> None:
++        body = b'{"content":"retrievable"}'
++        status, response_body = self._request(
++            "POST",
++            "/paste",
++            body,
++            {"Content-Length": str(len(body))},
++        )
++        self.assertEqual(status, 201)
++        paste_id = json.loads(response_body)["id"]
++
++        status, response_body = self._request("GET", "/health")
++        self.assertEqual(status, 200)
++        self.assertEqual(json.loads(response_body)["status"], "ok")
++
++        status, response_body = self._request("GET", f"/paste/{paste_id}")
++        self.assertEqual(status, 200)
++        self.assertEqual(json.loads(response_body), {"content": "retrievable"})
++
++
++if __name__ == "__main__":
++    unittest.main()

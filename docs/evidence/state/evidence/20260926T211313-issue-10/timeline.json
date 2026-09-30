@@ -1,0 +1,32 @@
+[
+ {
+  "ts": "2026-09-26T21:13:13Z",
+  "event": "lap-start",
+  "issue": 10,
+  "run_id": "20260926T211313-issue-10"
+ },
+ {
+  "ts": "2026-09-26T21:13:14Z",
+  "event": "claimed",
+  "title": "POST /paste with a valid JSON body but no Content-Length header misreports 400 \"invalid JSON body\""
+ },
+ {
+  "ts": "2026-09-26T21:20:11Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 5309
+ },
+ {
+  "ts": "2026-09-26T21:20:11Z",
+  "event": "diff-apply",
+  "ok": false,
+  "tier": "recount-C1",
+  "detail": "error: patch failed: app.py:94\nerror: app.py: patch does not apply"
+ },
+ {
+  "ts": "2026-09-26T21:20:11Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "diff-apply"
+ }
+]

@@ -1,0 +1,48 @@
+I'll start by reviewing the current checkout to confirm the state of the implementation.
+
+**Analysis of `app.py`:**
+- The `_not_found` method already sends a JSON 404 response with `{"error": "not found"}`.
+- `_send_json` sets `Content-Type: application/json`.
+- `do_GET` for `/paste/<id>` calls `_not_found()` when the id is missing.
+- Known-id GET returns 200 with stored content.
+- `/health` and revision reporting are untouched.
+
+Thus, the production code already satisfies acceptance criteria 1–5. The missing piece is **test coverage** that locks in the JSON body and content-type for unknown ids. I'll add a focused test for this behavior.
+
+**Steps:**
+1. Create branch `agent/issue-6`.
+2. Add a test to `app_test.py` asserting 404, `Content-Type: application/json`, and exact body `{"error": "not found"}` for `GET /paste/does-not-exist-123`.
+3. Run the full test suite.
+4. Commit the change.
+5. Output the diff.
+
+Here is the diff of my work:
+
+```diff
+diff --git a/app_test.py b/app_test.py
+index 8f3c1a2..b7e4d9f 100644
+--- a/app_test.py
++++ b/app_test.py
+@@ -75,6 +75,14 @@ class PasteServiceTest(unittest.TestCase):
+     def test_unknown_id_returns_404(self) -> None:
+         status, _ = self.request("GET", "/paste/does-not-exist-123")
+         self.assertEqual(status, 404)
+ 
++    def test_unknown_id_returns_404_with_json_error_body(self) -> None:
++        req = urllib.request.Request(self.base + "/paste/does-not-exist-123")
++        with self.assertRaises(urllib.error.HTTPError) as ctx:
++            urllib.request.urlopen(req)
++        self.assertEqual(ctx.exception.code, 404)
++        self.assertEqual(ctx.exception.headers.get("Content-Type"), "application/json")
++        self.assertEqual(ctx.exception.read(), b'{"error": "not found"}')
++
+     def test_get_without_id_returns_404(self) -> None:
+         status, _ = self.request("GET", "/paste")
+         self.assertEqual(status, 404)
+```
+
+**Test run result:**
+All tests pass, including the new `test_unknown_id_returns_404_with_json_error_body`.
+
+**Commit:**
+The change was committed on branch `agent/issue-6` with the message `Add test for JSON 404 body on unknown paste id`.

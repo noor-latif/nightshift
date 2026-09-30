@@ -1,0 +1,15 @@
+**Criterion 1 — POST /paste?x=1 with {"content": "hello"} returns 201 with an id: PASS.**
+`do_POST` now checks `urllib.parse.urlsplit(self.path).path != "/paste"` (candidate app.py, first line of `do_POST`), so the query string is stripped and the route matches; the handler then returns `201` with `{"id": self.store.create(content)}`.
+
+**Criterion 2 — GET /paste/<id>?v=1 returns 200 with that content: PASS.**
+`do_GET` already computes `path = urllib.parse.urlsplit(self.path).path` and routes `/paste/` prefixes against it (unchanged code), so query strings are ignored and the stored content is returned with 200.
+
+**Criterion 3 — POST /paste?x=1 with a non-JSON body still returns 400: PASS.**
+With the query string stripped, routing passes; a body with `Content-Length` but invalid JSON hits `except (ValueError, UnicodeDecodeError)` → `self._send_json(400, {"error": "invalid JSON body"})`.
+
+**Criterion 4 — Existing tests pass: PASS.**
+The only behavioral change widens POST routing to accept query strings; all existing tests POST to plain `/paste`, which still matches (`urlsplit("/paste").path == "/paste"`), and GET/DELETE/health/stats paths are untouched. No existing tested behavior is plausibly broken.
+
+One minor observation (non-blocking): `POST /paste/extra` still 404s correctly since the comparison is exact equality, and `POST /paste?x=1` with no `Content-Length` still yields 411 before JSON parsing, consistent with existing tests.
+
+VERDICT: accept

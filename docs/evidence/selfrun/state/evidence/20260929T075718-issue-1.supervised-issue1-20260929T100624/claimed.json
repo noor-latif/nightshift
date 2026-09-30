@@ -1,0 +1,22 @@
+[
+ {
+  "file": "src/selector.py",
+  "find": "        if disp in (\"parked\", \"timeout-park\"):\n            continue  # terminal dispositions are durable; dispatch must not burn retries again",
+  "replace": "        if disp in (\"parked\", \"timeout-park\", \"merged\"):\n            continue  # terminal dispositions are durable; dispatch must not burn retries again"
+ },
+ {
+  "file": "tests/test_deploy.py",
+  "find": "import sys\nimport os\nimport unittest",
+  "replace": "import sys\nimport os\nimport tempfile\nimport unittest"
+ },
+ {
+  "file": "tests/test_deploy.py",
+  "find": "from merge import trees_equal  # noqa: E402",
+  "replace": "from merge import trees_equal  # noqa: E402\nimport selector  # noqa: E402"
+ },
+ {
+  "file": "tests/test_deploy.py",
+  "find": "if __name__ == \"__main__\":\n    unittest.main()",
+  "replace": "class TestSelectorMergedDisposition(unittest.TestCase):\n    def test_claim_next_skips_merged_issue(self):\n        with tempfile.TemporaryDirectory() as td:\n            gh = os.path.join(td, \"gh\")\n            with open(gh, \"w\") as f:\n                f.write(\"#!%s\\n\" % sys.executable)\n                f.write(\n                    \"import sys\\n\"\n                    \"if sys.argv[1:3] == ['issue', 'list']:\\n\"\n                    \"    print('[{\\\"number\\\": 18, \\\"createdAt\\\": \\\"2026-01-01T00:00:00Z\\\"}]')\\n\"\n                    \"else:\\n\"\n                    \"    print('[]')\\n\"\n                )\n            os.chmod(gh, 0o755)\n            got = selector.claim_next(\n                \"r/x\",\n                issues_dir=os.path.join(td, \"claims\"),\n                now=1000.0,\n                gh=gh,\n                dispositions={\"18\": {\"retries\": 0, \"disposition\": \"merged\"}},\n            )\n            self.assertIsNone(got)\n\n\nif __name__ == \"__main__\":\n    unittest.main()"
+ }
+]

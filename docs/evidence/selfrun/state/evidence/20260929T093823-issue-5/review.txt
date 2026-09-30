@@ -1,0 +1,11 @@
+**Criterion 1 — PASS.** The candidate `parse_stream` wraps `json.loads` in `try/except json.JSONDecodeError` and raises `TransientError("Malformed SSE data: ...")` (agent.py, `except json.JSONDecodeError as e: raise TransientError(...)`), so the one-liner's `data: NOT-JSON {` line now triggers `agent.TransientError` and prints `K5-RED-GREEN`; the pre-fix call raised `JSONDecodeError` exactly as the criterion describes.
+
+**Criterion 2 — PASS.** In `chat()`, `parse_stream(raw)` is called inside `try: ... except TransientError: if attempt == 2: raise; continue` (agent.py), so the `TransientError` raised by a malformed chunk on attempt 1 causes the retry; `test_malformed_data_retried_then_succeeds` in test_agent.py feeds the malformed stream via `FakeOpener` and asserts `len(op.calls) == 2` and success, matching the existing fake-opener pattern.
+
+**Criterion 3 — PASS.** The diff's only functional change to the well-formed path is wrapping `json.loads` in try/except; the content/reasoning/finish_reason/usage accumulation logic is untouched (the added blank line inside `if chunk.get("usage"):` is syntactically inert), and `test_reasoning_and_content_split_with_usage` remains in the suite unchanged.
+
+**Criterion 4 — PASS.** `test_malformed_data_line_is_transient` feeds a raw stream containing `data: NOT-JSON {\n\n` and asserts `TransientError`; on pre-fix code, `json.loads("NOT-JSON {")` raises `json.JSONDecodeError`, so `assertRaises(TransientError)` fails — the test is genuinely RED on the pre-fix code.
+
+No plausible breakage of existing behavior is visible in the candidate state: the try/except only converts an uncaught `JSONDecodeError` into the `TransientError` class that the retry ladder already handles, which is the intended behavior.
+
+VERDICT: accept

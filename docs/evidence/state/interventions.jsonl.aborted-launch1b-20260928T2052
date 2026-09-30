@@ -1,0 +1,43 @@
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "crash", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "parked", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 3, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "success", "disposition": "merged", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 9, "outcome": "crash", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 9, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "timeout", "disposition": "timeout-park", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "session-start", "pid": 266257}
+{"ts": "2026-09-28T20:41:30Z", "event": "session-blocked", "issues": "9"}
+{"ts": "2026-09-28T20:41:30Z", "event": "session-start", "pid": 266258}
+{"ts": "2026-09-28T20:41:30Z", "event": "session-halt", "reason": "drained", "events": ["dispatch:idle", "DRAIN:0 parked, 0 merged"]}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "parked", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 5, "pid": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-end", "issue": 5, "outcome": "failure", "disposition": "parked", "gate": null}
+{"ts": "2026-09-28T20:41:30Z", "event": "lap-check", "issue": 5, "observed": []}
+{"ts": "2026-09-28T20:41:30Z", "event": "dispatch", "issue": 6, "pid": null}

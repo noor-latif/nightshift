@@ -1,0 +1,120 @@
+diff --git a/src/supervisor.py b/src/supervisor.py
+index f14e025..5712f1f 100644
+--- a/src/supervisor.py
++++ b/src/supervisor.py
+@@ -193,9 +193,14 @@ def dispatch(state, now, deps):
+     # wallclock guard measures the current lap session, not all history:
+     # refresh so a supervisor restarted hours later dispatches instead of HALT
+     state["started_at"] = now
++    # Persist ownership before spawning. If spawn fails, the next tick can
++    # account for the durable lap as a crash instead of treating its claim as
++    # an empty queue and halting the session.
++    save_state(state, deps["state_path"])
+     deps["start_lap"](claim["issue"], state["lap"])
+     runtime_log("dispatch", issue=claim["issue"], pid=state["lap"].get("pid"))
+     save_state(state, deps["state_path"])
++
+     return "dispatched"
+ 
+ 
+@@ -243,6 +248,8 @@ def tick(state, now, deps):
+     """One supervisor tick: health-check → reconcile → dispatch → tail."""
+     events = []
+     lap = state.get("lap")
++    dispatch_result = None
++
+ 
+     if lap:
+         if lap_healthy(lap, now):
+@@ -264,21 +271,13 @@ def tick(state, now, deps):
+                 events.append("HALT")
+                 return events
+     else:
+-        d = dispatch(state, now, deps)
+-        if d not in ("already-running",):
+-            events.append("dispatch:" + d)
+-            if d == "idle":
+-                issues = state.get("issues", {})
+-                blocked = [int(n) for n, r in issues.items()
+-                           if r.get("disposition") not in ("parked", "timeout-park", "merged")]
+-                parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
+-                merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
+-                if blocked:
+-                    events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
+-                else:
+-                    events.append("DRAIN:%d parked, %d merged" % (parked, merged))
++        dispatch_result = dispatch(state, now, deps)
++        if dispatch_result not in ("already-running",):
++            events.append("dispatch:" + dispatch_result)
+ 
+-    # reconcile: reap claims for issues with no live lap (supervisor restart)
++    # Reconcile before deciding whether an idle queue is drained. Reconcile
++    # can account for a claim left by a failed dispatch as a crash/retry; a
++    # drain decision made before that accounting can halt with work remaining.
+     observations = deps.get("reconcile_observations") or []
+     for path, claim in deps.get("reconcile", lambda now: [])(now):
+         if not state.get("lap") or state["lap"].get("issue") != claim["issue"]:
+@@ -287,9 +286,22 @@ def tick(state, now, deps):
+             note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
+             observations.append(note)
+             runtime_log("intervention", detail=note, claim=path)
++
++    if dispatch_result == "idle":
++        issues = state.get("issues", {})
++        blocked = [int(n) for n, r in issues.items()
++                   if r.get("disposition") not in ("parked", "timeout-park", "merged")]
++        parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
++        merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
++        if blocked:
++            events.append("BLOCKED:%s" % ",".join(map(str, sorted(blocked))))
++        else:
++            events.append("DRAIN:%d parked, %d merged" % (parked, merged))
++
+     save_state(state, deps["state_path"])
+     return events
+ 
++
+ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
+     """L-009 + crash-retry accounting: claim files no live lap owns.
+ 
+diff --git a/tests/test_supervisor.py b/tests/test_supervisor.py
+index 679db82..fc46885 100644
+--- a/tests/test_supervisor.py
++++ b/tests/test_supervisor.py
+@@ -566,6 +566,36 @@ class TestReconcileDeadClaims(unittest.TestCase):
+         self.run_reconcile(state)  # nothing left
+         self.assertEqual(state["issues"]["5"]["retries"], 1)
+ 
++    def test_idle_reconcile_claim_is_blocked_not_drained(self):
++        # Real selector + real reconcile: a fresh claim left by a failed
++        # dispatch must be accounted for before idle can become DRAIN.
++        import selector
++
++        gh = os.path.join(self.tmp, "gh")
++        with open(gh, "w") as f:
++            f.write("#!%s\n" % sys.executable)
++            f.write(
++                "import sys\n"
++                "if sys.argv[1] == 'issue':\n"
++                "    print('[{\\\"number\\\": 18, \\\"createdAt\\\": \\\"2026-01-01T00:00:00Z\\\"}]')\n"
++                "else:\n"
++                "    print('[]')\n"
++            )
++        os.chmod(gh, 0o755)
++        self.claim(18, claimed_at=999.0)
++        state = {"issues": {}, "lap": None, "started_at": None}
++        deps = fake_deps(self.tmp, [], claim_result=None)
++        deps["state_path"] = os.path.join(self.tmp, "state.json")
++        deps["claim"] = lambda now: selector.claim_next(
++            "r/x", self.claims, now=now, gh=gh)
++        deps["reconcile"] = lambda now: supervisor.reconcile_dead_claims(
++            now, state, self.claims, result_path=self.result)
++        deps["break_claim"] = lambda path, now: os.remove(path)
++        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
++            events = supervisor.tick(state, 1000.0, deps)
++        self.assertIn("BLOCKED:18", events)
++        self.assertFalse(any(e.startswith("DRAIN") for e in events))
++
+ 
+ class TestNoRealStateWrites(unittest.TestCase):
+     """Regression: a suite run from a nightshift-style cwd (a checkout with

@@ -1,0 +1,7 @@
+{
+ "verdict": "fail",
+ "outcome": "failure",
+ "gate": "diff-apply",
+ "caught_confabulation": "diff did not apply to a clean checkout",
+ "error": "error: patch failed: app.py:63\nerror: app.py: patch does not apply"
+}

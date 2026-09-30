@@ -1,0 +1,14 @@
+[
+ {
+  "ts": "2026-09-26T21:42:58Z",
+  "event": "lap-start",
+  "issue": 10,
+  "run_id": "20260926T214258-issue-10"
+ },
+ {
+  "ts": "2026-09-26T21:42:59Z",
+  "event": "lap-end",
+  "outcome": "crash",
+  "gate": null
+ }
+]

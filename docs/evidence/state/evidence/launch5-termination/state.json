@@ -1,0 +1,19 @@
+{
+ "issues": {
+  "17": {
+   "retries": 2,
+   "disposition": "retry"
+  },
+  "18": {
+   "retries": 0,
+   "disposition": "merged"
+  }
+ },
+ "lap": {
+  "issue": 17,
+  "claim_path": "state/claims/issue-17.json",
+  "started_at": 1790631119.2540417,
+  "pid": 286482
+ },
+ "started_at": 1790631119.2540417
+}

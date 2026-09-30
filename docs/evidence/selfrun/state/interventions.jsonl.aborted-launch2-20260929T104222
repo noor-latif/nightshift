@@ -1,0 +1,7 @@
+{"ts": "2026-09-29T08:21:22Z", "event": "session-start", "pid": 458541}
+{"ts": "2026-09-29T08:21:33Z", "event": "red-recheck", "issue": 2, "verdict": "fail"}
+{"ts": "2026-09-29T08:21:33Z", "event": "dispatch", "issue": 2, "pid": 459012}
+{"ts": "2026-09-29T08:27:18Z", "event": "lap-end", "issue": 2, "outcome": "failure", "disposition": "retry", "gate": null}
+{"ts": "2026-09-29T08:27:18Z", "event": "lap-check", "issue": 2, "observed": []}
+{"ts": "2026-09-29T08:27:30Z", "event": "red-recheck", "issue": 2, "verdict": "fail"}
+{"ts": "2026-09-29T08:27:30Z", "event": "dispatch", "issue": 2, "pid": 460670}

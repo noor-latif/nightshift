@@ -1,0 +1,129 @@
+--- a/app.py
++++ b/app.py
+@@ -57,6 +57,10 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if self.path != "/paste":
+             self._not_found()
+             return
++        raw_length = self.headers.get("Content-Length")
++        if raw_length is None or raw_length.strip() == "":
++            self._send_json(411, {"error": "Content-Length required"})
++            return
+         try:
+             body = json.loads(self._read_body())
+         except (ValueError, UnicodeDecodeError):
+--- /dev/null
++++ b/content_length_required_test.py
++"""Unit tests for body framing: POST without a usable Content-Length must 411."""
++from __future__ import annotations
++
++import json
++import socket
++import threading
++import unittest
++
++import app
++
++class ContentLengthRequiredTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.server = app.make_server(0)
++        self.port = self.server.server_address[1]
++        threading.Thread(target=self.server.serve_forever, daemon=True).start()
++        self.addCleanup(self.server.shutdown)
++        self.addCleanup(self.server.server_close)
++
++    def _raw(self, request: bytes, timeout: float = 5.0) -> tuple[int, bytes]:
++        with socket.create_connection(("127.0.0.1", self.port), timeout=timeout) as sock:
++            sock.sendall(request)
++            chunks: list[bytes] = []
++            while True:
++                try:
++                    chunk = sock.recv(4096)
++                except socket.timeout:
++                    break
++                if not chunk:
++                    break
++                chunks.append(chunk)
++        raw = b"".join(chunks)
++        head, _, body = raw.partition(b"\r\n\r\n")
++        status = int(head.split(b"\r\n", 1)[0].split()[1])
++        return status, body
++
++    def test_post_without_content_length_returns_411(self) -> None:
++        request = (
++            b"POST /paste HTTP/1.1\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"Connection: close\r\n"
++            b"\r\n"
++            b'{"content": "no length"}'
++        )
++        status, body = self._raw(request)
++        self.assertEqual(status, 411)
++        self.assertIn(b"Content-Length required", body)
++
++    def test_post_with_empty_content_length_returns_411(self) -> None:
++        request = (
++            b"POST /paste HTTP/1.1\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"Content-Length: \r\n"
++            b"Connection: close\r\n"
++            b"\r\n"
++            b'{"content": "empty length"}'
++        )
++        status, body = self._raw(request)
++        self.assertEqual(status, 411)
++        self.assertIn(b"Content-Length required", body)
++
++    def test_post_with_correct_content_length_unchanged(self) -> None:
++        request = (
++            b"POST /paste HTTP/1.1\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"Connection: close\r\n"
++            b"\r\n"
++        ).replace(b"Connection: close\r\n\r\n", b"")
++        body_bytes = json.dumps({"content": "with length"}).encode("utf-8")
++        request = (
++            b"POST /paste HTTP/1.1\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"Content-Length: " + str(len(body_bytes)).encode() + b"\r\n"
++            b"Connection: close\r\n"
++            b"\r\n" + body_bytes
++        )
++        status, body = self._raw(request)
++        self.assertEqual(status, 201)
++        self.assertIn(b'"id"', body)
++
++    def test_get_health_unaffected_by_missing_content_length(self) -> None:
++        request = (
++            b"GET /health HTTP/1.1\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"Connection: close\r\n"
++            b"\r\n"
++        )
++        status, body = self._raw(request)
++        self.assertEqual(status, 200)
++        self.assertIn(b'"status"', body)
++        self.assertNotIn(b"Content-Length required", body)
++
++    def test_get_paste_unaffected_by_missing_content_length(self) -> None:
++        body_bytes = json.dumps({"content": "framing probe"}).encode("utf-8")
++        create = (
++            b"POST /paste HTTP/1.1\r\n"
++            b"Host: 127.0.0.1\r\n"
++            b"Content-Length: " + str(len(body_bytes)).encode() + b"\r\n"
++            b"Connection: close\r\n"
++            b"\r\n" + body_bytes
++        )
++        _, created = self._raw(create)
++        paste_id = json.loads(created)["id"]
++        request = (
++            f"GET /paste/{paste_id} HTTP/1.1\r\n"
++            "Host: 127.0.0.1\r\n"
++            "Connection: close\r\n"
++            "\r\n"
++        ).encode("ascii")
++        status, body = self._raw(request)
++        self.assertEqual(status, 200)
++        self.assertEqual(json.loads(body), {"content": "framing probe"})
++
++if __name__ == "__main__":
++    unittest.main()

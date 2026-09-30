@@ -1,0 +1,15 @@
+{
+ "calls": [
+  {
+   "role": "implementer",
+   "usage": {
+    "completion_tokens": 8647,
+    "cost": 0.0004136872,
+    "prompt_tokens": 46697,
+    "total_tokens": 55344,
+    "buyer_cost_micro": 461
+   }
+  }
+ ],
+ "total_usd": 0.000461
+}

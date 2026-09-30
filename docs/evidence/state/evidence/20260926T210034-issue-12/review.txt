@@ -1,0 +1,11 @@
+**Criterion 1 — PASS**: The diff only touches the DELETE path; POST handling is untouched, so existing 201-with-id behavior is preserved.
+
+**Criterion 2 — PASS**: No changes to GET handling; the refactor is confined to the delete response path.
+
+**Criterion 3 — PASS**: After a successful `store.delete(paste_id)`, `_send_no_content()` sends `send_response(204)` with `Content-Length: 0` — the 204 is still returned on success.
+
+**Criterion 4 — PASS**: `_not_found()` is still invoked when `store.delete` returns False, and 404-on-missing-GET behavior is outside the changed lines.
+
+Note: This is a pure refactor (extracting the 204 response into `_send_no_content`); the control flow is identical to before — 204 on successful delete, 404 path otherwise. Nothing in the diff breaks any criterion.
+
+VERDICT: accept

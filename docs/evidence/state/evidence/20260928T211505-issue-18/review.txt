@@ -1,0 +1,13 @@
+**1. Start the server in a non-git directory; GET /health returns 200 with a "status": "ok" body. — PASS**
+Evidence: `current_revision()` now wraps the `git rev-parse` call in `try/except (OSError, subprocess.CalledProcessError)` returning `"unknown"`, so running outside a git repo no longer raises; the `/health` handler then sends `_send_json(200, {"status": "ok", "revision": ...})`.
+
+**2. The revision field is present and a string in that case (placeholder allowed). — PASS**
+Evidence: In the failure path the function returns the string literal `"unknown"`, so `revision` is always a string in the `/health` payload.
+
+**3. Inside the repo, GET /health still returns the real git sha; FACTORY_RUNTIME_CANDIDATE still wins when set. — PASS**
+Evidence: The happy path is unchanged — `FACTORY_RUNTIME_CANDIDATE` is still checked first and returned when set, and the `subprocess.run(["git", "rev-parse", "HEAD"], ...)` call with `check=True` is otherwise byte-identical to the original, so real-sha behavior and env-var precedence are preserved (existing tests `test_health_reports_ok_and_git_revision` and `test_health_reports_factory_runtime_candidate_exactly` cover exactly this and are unaffected).
+
+**4. Existing tests pass. — PASS**
+Evidence: The only behavioral change is inside the new exception handler, which is unreachable in environments where `git` succeeds (as in the test environment per the git-sha test); no existing test exercises the failure path, and no other code paths, routes, or signatures were modified.
+
+VERDICT: accept

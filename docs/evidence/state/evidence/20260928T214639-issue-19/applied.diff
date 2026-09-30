@@ -1,0 +1,54 @@
+diff --git a/app.py b/app.py
+index 0f4f3e5..24faec0 100644
+--- a/app.py
++++ b/app.py
+@@ -73,7 +73,7 @@ class PasteHandler(BaseHTTPRequestHandler):
+         if urllib.parse.urlsplit(self.path).path != "/paste":
+             self._not_found()
+             return
+-        if not self.headers.get("Content-Length"):
++        if not self.headers.get("Content-Length") and not self._is_chunked():
+             self._send_json(411, {"error": "Content-Length required"})
+             return
+         try:
+@@ -98,7 +98,41 @@ class PasteHandler(BaseHTTPRequestHandler):
+             return
+         self._send_no_content()
+ 
++    def _is_chunked(self) -> bool:
++        transfer_encoding = self.headers.get("Transfer-Encoding", "")
++        return any(
++            encoding.strip().lower() == "chunked"
++            for encoding in transfer_encoding.split(",")
++        )
++
+     def _read_body(self) -> str:
++        if self._is_chunked():
++            chunks: list[bytes] = []
++            while True:
++                line = self.rfile.readline()
++                if not line:
++                    raise ValueError("incomplete chunk size")
++                size_text = line.split(b";", 1)[0].strip()
++                try:
++                    size = int(size_text, 16)
++                except ValueError as exc:
++                    raise ValueError("invalid chunk size") from exc
++                if size < 0:
++                    raise ValueError("invalid chunk size")
++                if size == 0:
++                    while True:
++                        trailer = self.rfile.readline()
++                        if not trailer:
++                            raise ValueError("incomplete chunk trailer")
++                        if trailer in (b"\r\n", b"\n"):
++                            return b"".join(chunks).decode("utf-8")
++                chunk = self.rfile.read(size)
++                if len(chunk) != size:
++                    raise ValueError("incomplete chunk")
++                if self.rfile.read(2) != b"\r\n":
++                    raise ValueError("invalid chunk terminator")
++                chunks.append(chunk)
++
+         length = int(self.headers.get("Content-Length") or 0)
+         return self.rfile.read(length).decode("utf-8")

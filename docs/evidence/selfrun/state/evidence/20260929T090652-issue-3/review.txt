@@ -1,0 +1,11 @@
+**Criterion 1: FAIL.** The diff's added guard `not m["replace"].endswith("\n")` never fires for this case: `_norm_indexed` strips the anchor's final newline (`return "".join(norm)[:-1]`), so `find="A\nB\n"` normalizes to needle `"A\nB"`, which does not satisfy `needle.endswith("\n")`. Tracing the post-apply code on `A\nB\nC\n`: `end = 3`, `b = hay_idx[2]+1 = 3`, result = `"X\n" + text[3:]` = `"X\n\nC\n"` — the probe still outputs `X\n\nC\n` and the assert fires. The diff only edits an inert branch; the structural bug (the anchor's trailing newline is excluded from the replaced span) is untouched.
+
+**Criterion 2: FAIL.** Same trace on `A\nB\n` with `replace="X\nY\n"`: needle `"A\nB"` ends at 3, `b = 3`, result = `"X\nY\n" + "\n"` = `"X\nY\n\n"` ≠ `X\nY\n`.
+
+**Criterion 3: PASS.** The single-line case (`find="x = 1"`) and both trailing-whitespace-drift cases normalize to needles without a trailing `"\n"` (e.g. `"x = 1"`), so the modified condition short-circuits False exactly as the old one did; behavior on those paths is byte-identical pre/post diff.
+
+**Criterion 4: PASS (literally).** `test_newline_terminated_multiline_anchor_replaces_through_newline` exists in `tests/test_lap_mutations.py` asserting exact bytes `b"X\nC\n"` / `b"X\nY\n"`, and it fails on the pre-fix code (which produces `X\n\nC\n`). Note, however, it *also* fails on the post-fix code per criteria 1–2 — the criterion's letter is met, but the test does not go green, which is the defect captured above. (The stray blank line inserted into `test_anchor_miss_fails_loud_naming_file_and_prefix` is cosmetic and harmless.)
+
+The change is a no-op for the exact RED case it claims to fix: `apply_mutations` still leaves the anchor's trailing newline unconsumed when the replacement supplies its own line boundary, so both K3 probes remain red.
+
+VERDICT: reject

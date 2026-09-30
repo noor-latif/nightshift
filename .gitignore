@@ -1,4 +1,4 @@
-state/
-claims/
+/state/
+/claims/
 __pycache__/
 *.pid

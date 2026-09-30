@@ -1,0 +1,40 @@
+[
+ {
+  "ts": "2026-09-26T21:04:55Z",
+  "event": "lap-start",
+  "issue": 12,
+  "run_id": "20260926T210455-issue-12"
+ },
+ {
+  "ts": "2026-09-26T21:04:56Z",
+  "event": "claimed",
+  "title": "Add DELETE /paste/<id>: 204 on delete, then the paste is gone"
+ },
+ {
+  "ts": "2026-09-26T21:05:13Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 1346
+ },
+ {
+  "ts": "2026-09-26T21:05:13Z",
+  "event": "diff-apply",
+  "ok": true,
+  "tier": "recount",
+  "detail": "applied"
+ },
+ {
+  "ts": "2026-09-26T21:05:21Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-26T21:05:34Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-26T21:05:34Z",
+  "event": "lap-end",
+  "outcome": "crash",
+  "gate": null
+ }
+]

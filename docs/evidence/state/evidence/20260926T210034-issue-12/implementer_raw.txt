@@ -1,0 +1,17 @@
+```diff
+--- app.py
++++ app.py
+@@ -79,9 +79,12 @@
+         if not self.store.delete(paste_id):
+             self._not_found()
+             return
++        self._send_no_content()
++
++    def _send_no_content(self) -> None:
+         self.send_response(204)
+         self.send_header("Content-Length", "0")
+         self.end_headers()
+ 
+     def _read_body(self) -> str:
+         length = int(self.headers.get("Content-Length") or 0)
+```

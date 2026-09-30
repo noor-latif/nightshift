@@ -1,0 +1,9 @@
+**Criterion 1: PASS** — The diff adds `if content == "": self._send_json(400, {"error": "'content' must not be empty"})` with a `return`, so `{"content": ""}` yields a 400 JSON body containing an `error` field and no `id` (the `store.create` call is never reached).
+
+**Criterion 2: PASS** — For `"x"`, the new empty-string check is false (`content == ""` fails), so flow proceeds unchanged to `self._send_json(201, {"id": self.store.create(content)})`.
+
+**Criterion 3: PASS** — The pre-existing `if not isinstance(content, str): ... 400 {"error": "'content' must be a string"}` check remains intact above the new check, so `content: 42` and missing `content` (both non-string in `body.get("content")`) still return 400 before the new branch runs.
+
+**Criterion 4: PASS** — No existing test exercises empty-string content (checked `app_test.py` and `paste_query_string_test.py`), all pre-existing 400/201/411 paths are structurally unchanged, and the new branch is a pure early-return guard; no plausible breakage of tested behavior.
+
+VERDICT: accept

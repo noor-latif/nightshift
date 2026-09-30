@@ -1,0 +1,6 @@
+{
+ "verdict": "fail",
+ "outcome": "failure",
+ "gate": "diff-extraction",
+ "caught_confabulation": "model produced no diff despite claiming to implement"
+}

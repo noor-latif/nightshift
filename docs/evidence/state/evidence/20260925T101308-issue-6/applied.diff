@@ -1,0 +1,19 @@
+diff --git a/app_test.py b/app_test.py
+index 15cbc52..9bf9a7e 100644
+--- a/app_test.py
++++ b/app_test.py
+@@ -67,6 +67,14 @@ class PasteServiceTest(unittest.TestCase):
+         status, _ = self.request("GET", "/paste/does-not-exist-123")
+         self.assertEqual(status, 404)
+ 
++    def test_unknown_id_returns_404_with_json_error_body(self) -> None:
++        req = urllib.request.Request(self.base + "/paste/does-not-exist-123")
++        with self.assertRaises(urllib.error.HTTPError) as ctx:
++            urllib.request.urlopen(req)
++        self.assertEqual(ctx.exception.code, 404)
++        self.assertEqual(ctx.exception.headers.get("Content-Type"), "application/json")
++        self.assertEqual(ctx.exception.read(), b'{"error": "not found"}')
++
+     def test_get_without_id_returns_404(self) -> None:
+         status, _ = self.request("GET", "/paste")
+         self.assertEqual(status, 404)

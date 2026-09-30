@@ -1,0 +1,25 @@
+{
+ "calls": [
+  {
+   "role": "implementer",
+   "usage": {
+    "completion_tokens": 4230,
+    "cost": 4.85963e-05,
+    "prompt_tokens": 4427,
+    "total_tokens": 8657,
+    "buyer_cost_micro": 61
+   }
+  },
+  {
+   "role": "reviewer",
+   "usage": {
+    "completion_tokens": 741,
+    "cost": 2.5938e-05,
+    "prompt_tokens": 4735,
+    "total_tokens": 5476,
+    "buyer_cost_micro": 30
+   }
+  }
+ ],
+ "total_usd": 9.1e-05
+}

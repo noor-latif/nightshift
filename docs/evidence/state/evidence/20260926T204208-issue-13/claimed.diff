@@ -1,0 +1,22 @@
+--- a/app.py
++++ b/app.py
+@@ -29,6 +29,10 @@ class PasteStore:
+     def __init__(self) -> None:
+         self._pastes: dict[str, str] = {}
+ 
++    @property
++    def count(self) -> int:
++        return len(self._pastes)
++
+     def create(self, content: str) -> str:
+         paste_id = secrets.token_urlsafe(8)
+         self._pastes[paste_id] = content
+@@ -46,6 +50,8 @@ class PasteHandler(BaseHTTPRequestHandler):
+         path = urllib.parse.urlsplit(self.path).path
+         if path == "/health":
+             self._send_json(200, {"status": "ok", "revision": current_revision()})
++        elif path == "/stats":
++            self._send_json(200, {"pastes": self.store.count})
+         elif path.startswith("/paste/"):
+             content = self.store.get(path[len("/paste/"):])
+             if content is None:

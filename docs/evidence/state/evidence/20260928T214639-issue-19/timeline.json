@@ -1,0 +1,55 @@
+[
+ {
+  "ts": "2026-09-28T21:46:39Z",
+  "event": "lap-start",
+  "issue": 19,
+  "run_id": "20260928T214639-issue-19"
+ },
+ {
+  "ts": "2026-09-28T21:46:41Z",
+  "event": "claimed",
+  "title": "POST /paste rejects valid chunked request bodies with 400 invalid JSON"
+ },
+ {
+  "ts": "2026-09-28T21:50:11Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 2281
+ },
+ {
+  "ts": "2026-09-28T21:50:11Z",
+  "event": "mutation-apply",
+  "ok": true,
+  "detail": "applied 2 mutations"
+ },
+ {
+  "ts": "2026-09-28T21:51:13Z",
+  "event": "review-accept"
+ },
+ {
+  "ts": "2026-09-28T21:51:26Z",
+  "event": "verify-green"
+ },
+ {
+  "ts": "2026-09-28T21:51:33Z",
+  "event": "merged",
+  "pr": "https://github.com/noor-latif/toy-product/pull/24",
+  "merge_sha": "54eafa048b8f55ce0cac6d893a0c317101049472"
+ },
+ {
+  "ts": "2026-09-28T21:51:36Z",
+  "event": "deploy",
+  "rc": 0,
+  "tail": "HEAD is now at 54eafa0 Implement issue 19 (#24)\nREADY\n"
+ },
+ {
+  "ts": "2026-09-28T21:51:38Z",
+  "event": "issue-closed"
+ },
+ {
+  "ts": "2026-09-28T21:51:38Z",
+  "event": "lap-end",
+  "outcome": "success",
+  "gate": null
+ }
+]

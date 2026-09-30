@@ -1,0 +1,12 @@
+[
+  {
+    "file": "app.py",
+    "find": "        if not self.headers.get(\"Content-Length\"):\n            self._send_json(411, {\"error\": \"Content-Length required\"})\n            return",
+    "replace": "        if not self.headers.get(\"Content-Length\") and not self._is_chunked():\n            self._send_json(411, {\"error\": \"Content-Length required\"})\n            return"
+  },
+  {
+    "file": "app.py",
+    "find": "    def _read_body(self) -> str:\n        length = int(self.headers.get(\"Content-Length\") or 0)\n        return self.rfile.read(length).decode(\"utf-8\")",
+    "replace": "    def _is_chunked(self) -> bool:\n        transfer_encoding = self.headers.get(\"Transfer-Encoding\", \"\")\n        return any(\n            encoding.strip().lower() == \"chunked\"\n            for encoding in transfer_encoding.split(\",\")\n        )\n\n    def _read_body(self) -> str:\n        if self._is_chunked():\n            chunks: list[bytes] = []\n            while True:\n                line = self.rfile.readline()\n                if not line:\n                    raise ValueError(\"incomplete chunk size\")\n                size_text = line.split(b\";\", 1)[0].strip()\n                try:\n                    size = int(size_text, 16)\n                except ValueError as exc:\n                    raise ValueError(\"invalid chunk size\") from exc\n                if size < 0:\n                    raise ValueError(\"invalid chunk size\")\n                if size == 0:\n                    while True:\n                        trailer = self.rfile.readline()\n                        if not trailer:\n                            raise ValueError(\"incomplete chunk trailer\")\n                        if trailer in (b\"\\r\\n\", b\"\\n\"):\n                            return b\"\".join(chunks).decode(\"utf-8\")\n                chunk = self.rfile.read(size)\n                if len(chunk) != size:\n                    raise ValueError(\"incomplete chunk\")\n                if self.rfile.read(2) != b\"\\r\\n\":\n                    raise ValueError(\"invalid chunk terminator\")\n                chunks.append(chunk)\n\n        length = int(self.headers.get(\"Content-Length\") or 0)\n        return self.rfile.read(length).decode(\"utf-8\")"
+  }
+]

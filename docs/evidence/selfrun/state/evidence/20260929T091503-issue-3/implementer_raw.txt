@@ -1,0 +1,12 @@
+[
+  {
+    "file": "src/lap.py",
+    "find": "        if needle.endswith(\"\\n\") and len(needle) > 1:\n            end -= 1  # the anchor's final newline is a line boundary, not\n                      # content: keep the file's own trailing bytes of that line",
+    "replace": "        if (needle.endswith(\"\\n\") and len(needle) > 1\n                and hay_idx[end - 1] != hay_idx[end - 2] + 1):\n            # Preserve source bytes normalized away before the final newline\n            # (for example trailing whitespace or a CR in a CRLF line).\n            end -= 1"
+  },
+  {
+    "file": "tests/test_lap_mutations.py",
+    "find": "    def test_multi_line_anchor_with_indentation(self):\n        with open(os.path.join(self.dir, \"app.py\"), \"w\") as f:\n            f.write(\"def f():\\n    return 1\\n\")\n        ok, _, _ = lap.apply_mutations(\n            [mut(\"app.py\", \"    return 1\", \"    return 2\")], self.dir)\n        self.assertTrue(ok)\n        self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(),\n                         \"def f():\\n    return 2\\n\")\n\n    def test_nothing_written_when_any_anchor_misses(self):",
+    "replace": "    def test_multi_line_anchor_with_indentation(self):\n        with open(os.path.join(self.dir, \"app.py\"), \"w\") as f:\n            f.write(\"def f():\\n    return 1\\n\")\n        ok, _, _ = lap.apply_mutations(\n            [mut(\"app.py\", \"    return 1\", \"    return 2\")], self.dir)\n        self.assertTrue(ok)\n        self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(),\n                         \"def f():\\n    return 2\\n\")\n\n    def test_newline_terminated_anchor_consumes_newline(self):\n        with open(os.path.join(self.dir, \"app.py\"), \"wb\") as f:\n            f.write(b\"A\\nB\\nC\\n\")\n        ok, detail, _ = lap.apply_mutations(\n            [mut(\"app.py\", \"A\\nB\\n\", \"X\\n\")], self.dir)\n        self.assertTrue(ok, detail)\n        with open(os.path.join(self.dir, \"app.py\"), \"rb\") as f:\n            self.assertEqual(f.read(), b\"X\\nC\\n\")\n\n    def test_nothing_written_when_any_anchor_misses(self):"
+  }
+]

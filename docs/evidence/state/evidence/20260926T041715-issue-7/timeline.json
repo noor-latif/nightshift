@@ -1,0 +1,31 @@
+[
+ {
+  "ts": "2026-09-26T04:17:15Z",
+  "event": "lap-start",
+  "issue": 7,
+  "run_id": "20260926T041715-issue-7"
+ },
+ {
+  "ts": "2026-09-26T04:17:16Z",
+  "event": "claimed",
+  "title": "POST /paste with a malformed Content-Length header crashes the request instead of answering 400"
+ },
+ {
+  "ts": "2026-09-26T04:19:19Z",
+  "event": "implementer-done",
+  "finish_reason": "stop",
+  "chars": 10816
+ },
+ {
+  "ts": "2026-09-26T04:19:19Z",
+  "event": "diff-apply",
+  "ok": false,
+  "detail": "error: patch fragment without header at /tmp/tmprdlrerxj.patch:17: @@ -43,16 +47,20 @@ class PasteHandler(BaseHTTPRequestHandler):"
+ },
+ {
+  "ts": "2026-09-26T04:19:19Z",
+  "event": "lap-end",
+  "outcome": "failure",
+  "gate": "diff-apply"
+ }
+]

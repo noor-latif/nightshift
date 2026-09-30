@@ -1,0 +1,7 @@
+{
+ "verdict": "fail",
+ "outcome": "failure",
+ "gate": "mutation-apply",
+ "caught_confabulation": "anchor miss: mutations did not apply to the checkout",
+ "error": "mutation-apply: tests/test_verify.py: anchor occurs 0 times (expected 1), anchor prefix: 'class TestExecOracle:\\n'"
+}

@@ -1,0 +1,41 @@
+{
+ "unit": {
+  "status": "pass",
+  "output": "......................~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/test_lap_mutations.py:104: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpunq637ma/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 1\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/test_lap_mutations.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpjl140q4h/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 2\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/test_lap_mutations.py:140: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpbtr7n8ys/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(),\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n..~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/test_lap_mutations.py:158: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp9xhtw8ja/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 1\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/test_lap_mutations.py:132: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpl6ba4b_c/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 9\\ny = 1\\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/test_lap_mutations.py:124: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp2x050fo2/app.py' mode='r' encoding='UTF-8'>\n  self.assertEqual(open(os.path.join(self.dir, \"app.py\")).read(), \"x = 3   \\n\")\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n....................Exception ignored while calling deallocator <function _TemporaryFileCloser.__del__ at 0x7f6b8bd91b10>:\nTraceback (most recent call last):\n  File \"/usr/lib/python3.14/tempfile.py\", line 482, in __del__\n    self.cleanup()\n  File \"/usr/lib/python3.14/tempfile.py\", line 461, in cleanup\n    self.file.close()\nAttributeError: 'Err' object has no attribute 'close'\nException ignored while calling deallocator <function _TemporaryFileCloser.__del__ at 0x7f6b8bd91b10>:\nTraceback (most recent call last):\n  File \"/usr/lib/python3.14/tempfile.py\", line 482, in __del__\n    self.cleanup()\n  File \"/usr/lib/python3.14/tempfile.py\", line 461, in cleanup\n    self.file.close()\nAttributeError: 'Err' object has no attribute 'close'\n.............................................notify failed: <urlopen error ntfy down>\n...notify failed: <urlopen error ntfy down>\n.........../usr/lib/python3.14/unittest/case.py:725: DeprecationWarning: It is deprecated to return a value that is not None from a test case (<bound method TestReconcileDeadClaims.test_other_issue_orphan_still_counted_while_lap_live of <test_supervisor.TestReconcileDeadClaims testMethod=test_other_issue_orphan_still_counted_while_lap_live>> returned 'list')\n  return self.run(*args, **kwds)\n....................../usr/lib/python3.14/unittest/case.py:615: ResourceWarning: unclosed <socket.socket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 38265)>\n  result = method()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n......~/factory-lab/nightshift/.factory/worktrees/agent-issue-3/tests/../src/verify.py:304: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmphauekrke/mixed.pid.log' mode='w' encoding='UTF-8'>\n  boot_candidate(boot_dir, port, pid_file)\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 480985 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n......./usr/lib/python3.14/unittest/case.py:615: ResourceWarning: unclosed <socket.socket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 35347)>\n  result = method()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.............\n----------------------------------------------------------------------\nRan 157 tests in 4.912s\n\nOK\n<sys>:0: ResourceWarning: unclosed <socket.socket fd=3, family=2, type=1, proto=0, laddr=('127.0.0.1', 44719)>\n<sys>:0: ResourceWarning: unclosed <socket.socket fd=5, family=2, type=1, proto=0, laddr=('127.0.0.1', 33513)>\n<sys>:0: ResourceWarning: unclosed <socket.socket fd=4, family=2, type=1, proto=0, laddr=('127.0.0.1', 44519)>\n"
+ },
+ "scenarios": [
+  {
+   "scenario": "apply-mutations-newline-anchor",
+   "checks": [
+    {
+     "assertion": "exec python3 -c import os, subprocess, sys, tempfile\nsys.path.insert(0, 'src')\nimport lap\nwt = tempfile.mkdtemp()\nsubprocess.run(['git', 'init', '-q'], cwd=wt, capture_output=True)\nopen(os.path.join(wt, 'app.py'), 'w').write('A\\nB\\nC\\n')\nok, d, _ = lap.apply_mutations([{'file': 'app.py', 'find': 'A\\nB\\n', 'replace': 'X\\n'}], wt)\nout = open(os.path.join(wt, 'app.py')).read()\nassert out == 'X\\nC\\n', out\nprint('K3-RED-GREEN')\n",
+     "expected_exit": 0,
+     "observed_exit": 0,
+     "expected_fragment": "K3-RED-GREEN",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "exec python3 -c import os, subprocess, sys, tempfile\nsys.path.insert(0, 'src')\nimport lap\nwt = tempfile.mkdtemp()\nsubprocess.run(['git', 'init', '-q'], cwd=wt, capture_output=True)\nopen(os.path.join(wt, 'app.py'), 'w').write('A\\nB\\n')\nok, d, _ = lap.apply_mutations([{'file': 'app.py', 'find': 'A\\nB\\n', 'replace': 'X\\nY\\n'}], wt)\nout = open(os.path.join(wt, 'app.py')).read()\nassert out == 'X\\nY\\n', out\nprint('K3-C2-GREEN')\n",
+     "expected_exit": 0,
+     "observed_exit": 0,
+     "expected_fragment": "K3-C2-GREEN",
+     "fragment_found": true,
+     "status": "pass"
+    },
+    {
+     "assertion": "exec python3 -m unittest discover -s tests -p test_lap_mutations.py",
+     "expected_exit": 0,
+     "observed_exit": 0,
+     "status": "pass"
+    }
+   ],
+   "verdict": "pass"
+  }
+ ],
+ "provenance": {
+  "status": "skip",
+  "detail": "DEPLOY_MODE=none"
+ },
+ "verdict": "pass"
+}

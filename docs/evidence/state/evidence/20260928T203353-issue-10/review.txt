@@ -1,0 +1,11 @@
+**Criterion 1 — PASS:** `app.py` returns `411 {"error": "Content-Length required"}` when `self.headers.get("Content-Length")` is falsy (absent or empty), and `test_post_without_or_with_empty_content_length_returns_411` exercises both `headers: {}` and `{"Content-Length": ""}` via `raw_request`, asserting 411 and the fragment `b"Content-Length required"`. The `putrequest`/`putheader`/`endheaders(body)` path correctly bypasses `http.client`'s auto-Content-Length, matching the scenario note.
+
+**Criterion 2 — PASS:** the 411 check only fires when the header is missing/empty; `test_post_with_content_length_and_get_requests_work` sends a correct `Content-Length` and asserts 201 with an `"id"` in the response, confirming the normal POST path is unchanged (existing 400-path tests in the diff context are untouched).
+
+**Criterion 3 — PASS:** the new check lives inside `do_POST` only, so GETs never hit it; the new test issues `GET /health` and `GET /paste/<id>` with no `Content-Length` and asserts 200 for both.
+
+**Criterion 4 — PASS (with a note):** new tests cover all of criteria 1–3 using the explicitly permitted `http.client` header-suppression technique. Minor deviation: the tests were appended to the existing `app_test.py` rather than a brand-new test file; the coverage and technique requirements are fully met, and the existing file is the natural home for them, so I don't consider this substance-affecting.
+
+No other concerns: malformed `Content-Length` *values* remain correctly out of scope (parked issue #7), `Content-Length: 0` still falls through to the pre-existing 400 path as a valid value, and the tests' `finally: connection.close()` won't hang given the 5s socket timeout noted in the probe evidence.
+
+VERDICT: accept

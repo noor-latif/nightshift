@@ -1,0 +1,22 @@
+[
+ {
+  "file": "src/supervisor.py",
+  "find": "    events = []\n    lap = state.get(\"lap\")",
+  "replace": "    events = []\n    lap = state.get(\"lap\")\n    dispatch_idle = False"
+ },
+ {
+  "file": "src/supervisor.py",
+  "find": "        d = dispatch(state, now, deps)\n        if d not in (\"already-running\",):\n            events.append(\"dispatch:\" + d)\n            if d == \"idle\":\n                issues = state.get(\"issues\", {})\n                blocked = [int(n) for n, r in issues.items()\n                           if r.get(\"disposition\") not in (\"parked\", \"timeout-park\", \"merged\")]\n                parked = sum(1 for r in issues.values() if r.get(\"disposition\") in (\"parked\", \"timeout-park\"))\n                merged = sum(1 for r in issues.values() if r.get(\"disposition\") == \"merged\")\n                if blocked:\n                    events.append(\"BLOCKED:%s\" % \",\".join(map(str, sorted(blocked))))\n                else:\n                    events.append(\"DRAIN:%d parked, %d merged\" % (parked, merged))",
+  "replace": "        d = dispatch(state, now, deps)\n        if d not in (\"already-running\",):\n            events.append(\"dispatch:\" + d)\n        # Reconcile can turn an apparent idle queue into a retryable issue.\n        # Defer DRAIN/BLOCKED classification until after reconciliation.\n        dispatch_idle = d == \"idle\""
+ },
+ {
+  "file": "src/supervisor.py",
+  "find": "            runtime_log(\"intervention\", detail=note, claim=path)\n    save_state(state, deps[\"state_path\"])",
+  "replace": "            runtime_log(\"intervention\", detail=note, claim=path)\n\n    if dispatch_idle:\n        issues = state.get(\"issues\", {})\n        blocked = [int(n) for n, r in issues.items()\n                   if r.get(\"disposition\") not in (\"parked\", \"timeout-park\", \"merged\")]\n        parked = sum(1 for r in issues.values()\n                     if r.get(\"disposition\") in (\"parked\", \"timeout-park\"))\n        merged = sum(1 for r in issues.values() if r.get(\"disposition\") == \"merged\")\n        if blocked:\n            events.append(\"BLOCKED:%s\" % \",\".join(map(str, sorted(blocked))))\n        else:\n            events.append(\"DRAIN:%d parked, %d merged\" % (parked, merged))\n    save_state(state, deps[\"state_path\"])"
+ },
+ {
+  "file": "tests/test_supervisor.py",
+  "find": "        self.assertTrue(os.path.exists(os.path.join(self.claims, \"issue-17.json\")))\n\n    def test_other_issue_orphan_still_counted_while_lap_live(self):",
+  "replace": "        self.assertTrue(os.path.exists(os.path.join(self.claims, \"issue-17.json\")))\n\n    def test_idle_reconcile_claim_open_issue_is_blocked_not_drained(self):\n        import selector\n\n        gh = os.path.join(self.tmp, \"gh\")\n        with open(gh, \"w\") as f:\n            f.write(\"#!%s\\n\" % sys.executable)\n            f.write(\n                \"import sys, json\\n\"\n                \"if sys.argv[1:3] == ['issue', 'list']:\\n\"\n                \"    print(json.dumps([{'number': 18, 'createdAt': '2026-01-01T00:00:00Z'}]))\\n\"\n                \"else:\\n\"\n                \"    print('[]')\\n\"\n            )\n        os.chmod(gh, 0o755)\n        claim = selector.claim_next(\"r/x\", self.claims, now=1000.0, gh=gh)\n        self.assertEqual(claim[\"issue\"], 18)\n\n        state = {\"issues\": {}, \"lap\": None, \"started_at\": None}\n        deps = {\n            \"state_path\": os.path.join(self.tmp, \"state.json\"),\n            \"notify\": lambda text: None,\n            \"claim\": lambda now: selector.claim_next(\"r/x\", self.claims,\n                                                       now=now, gh=gh),\n            \"reconcile\": lambda now: supervisor.reconcile_dead_claims(\n                now, state, self.claims, result_path=self.result),\n            \"break_claim\": lambda path, now: os.remove(path),\n            \"reconcile_observations\": [],\n        }\n        with unittest.mock.patch.object(supervisor, \"RUNTIME_LOG_PATH\", self.log):\n            events = supervisor.tick(state, 1000.0, deps)\n\n        self.assertIn(\"dispatch:idle\", events)\n        self.assertIn(\"BLOCKED:18\", events)\n        self.assertFalse(any(e.startswith(\"DRAIN\") for e in events))\n\n    def test_other_issue_orphan_still_counted_while_lap_live(self):"
+ }
+]

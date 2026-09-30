@@ -1,0 +1,11 @@
+{"ts": "2026-09-28T21:27:09Z", "event": "session-start", "pid": 284761}
+{"ts": "2026-09-28T21:27:23Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T21:27:23Z", "event": "dispatch", "issue": 17, "pid": 285012}
+{"ts": "2026-09-28T21:29:28Z", "event": "lap-end", "issue": 17, "outcome": "crash", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T21:29:28Z", "event": "lap-check", "issue": 17, "observed": []}
+{"ts": "2026-09-28T21:29:48Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T21:29:48Z", "event": "dispatch", "issue": 17, "pid": 285731}
+{"ts": "2026-09-28T21:31:53Z", "event": "lap-end", "issue": 17, "outcome": "crash", "disposition": "retry", "gate": null}
+{"ts": "2026-09-28T21:31:53Z", "event": "lap-check", "issue": 17, "observed": []}
+{"ts": "2026-09-28T21:32:13Z", "event": "red-recheck", "issue": 17, "verdict": "fail"}
+{"ts": "2026-09-28T21:32:13Z", "event": "dispatch", "issue": 17, "pid": 286482}
