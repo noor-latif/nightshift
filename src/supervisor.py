@@ -71,7 +71,10 @@ def runtime_log(event, path=None, **fields):
         text. Detector coverage: the orphan-claim reap class only — no
         pid-mismatch or retry-counter-drift detector is implemented
         (noted 2026-09-29).
-      red-recheck — dispatch-time RED re-check verdict (issue, verdict).
+      red-recheck — dispatch-time RED re-check verdict (issue, verdict, detail).
+        Verdict is the closed set pass/fail/hold/error; 'error' means the
+        recheck instrument itself failed (an instrument failure, score-attributed
+        as such, never read as "still RED") with detail = exception repr.
     """
     path = path or RUNTIME_LOG_PATH
     row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "event": event}
@@ -173,8 +176,8 @@ def dispatch(state, now, deps):
     # repro is RED on fresh main first; GREEN → reconcile as merged + skip.
     recheck = deps.get("red_recheck")
     if recheck:
-        verdict = recheck(claim["issue"])
-        runtime_log("red-recheck", issue=claim["issue"], verdict=verdict)
+        verdict, detail = recheck(claim["issue"])
+        runtime_log("red-recheck", issue=claim["issue"], verdict=verdict, detail=detail)
         if verdict == "pass":
             state.setdefault("issues", {}).setdefault(str(claim["issue"]), {"retries": 0})
             state["issues"][str(claim["issue"])]["disposition"] = "merged"
@@ -293,9 +296,16 @@ def tick(state, now, deps):
 
 def red_recheck(issue):
     """L-013: re-run the issue's scenario against fresh origin/main
-    BEFORE spending a lap. 'pass' = main already satisfies it (the
-    issue is vacated — a lap would be a refactor lap, not work).
-    Anything else (fail/hold/crash) = still RED → dispatch.
+    BEFORE spending a lap. Returns (verdict, detail) where verdict is
+    the closed set pass/fail/hold/error:
+      pass  = main already satisfies it (the issue is vacated — a lap
+              would be a refactor lap, not work)
+      fail/hold = still RED → dispatch
+      error = the recheck ITSELF failed (instrument failure) — still
+              dispatches (a spent lap is recoverable, a skipped issue
+              is stranded), but is score-attributed as an instrument
+              failure, never as "still RED"; detail carries the
+              exception repr so a harness bug is never misread as RED.
 
     Module level (was a main() closure) so the SCENARIOS_DIR wiring is
     the real, directly-testable code path: a deployment-curated oracle
@@ -308,9 +318,9 @@ def red_recheck(issue):
     try:
         pid_file = os.path.join("/tmp", "factory-recheck-%d.pid" % issue)
         evidence = verify.verify_candidate(worktree, pid_file, SCENARIOS_DIR, issue=issue)
-        return evidence.get("verdict")
-    except Exception:
-        return None  # recheck itself failed → treat as RED, spend the lap
+        return evidence.get("verdict"), None
+    except Exception as e:
+        return "error", repr(e)
     finally:
         subprocess.run(["git", "worktree", "remove", "--force", worktree],
                        cwd=os.path.expanduser(lapmod.PRODUCT_REPO), capture_output=True)

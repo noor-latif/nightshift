@@ -195,7 +195,7 @@ class TestScenariosDirWiring(unittest.TestCase):
         with unittest.mock.patch.object(supervisor, "SCENARIOS_DIR", curated), \
              _patch_lap_worktree(wt), \
              _patch_verify_recorder(recorder):
-            verdict = supervisor.red_recheck(3)
+            verdict, _detail = supervisor.red_recheck(3)
         self.assertEqual(seen["dir"], curated)
         self.assertEqual(seen["issue"], 3)
         self.assertEqual(verdict, "fail")
@@ -211,7 +211,7 @@ class TestScenariosDirWiring(unittest.TestCase):
             return {"verdict": "fail"}
 
         with _patch_lap_worktree(wt), _patch_verify_recorder(recorder):
-            supervisor.red_recheck(4)
+            verdict, _detail = supervisor.red_recheck(4)
         self.assertEqual(os.path.normpath(seen["dir"]),
                          os.path.normpath(settings.SCENARIOS_DIR))
 

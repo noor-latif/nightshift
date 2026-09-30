@@ -418,7 +418,7 @@ class TestDispatchRedRecheck(unittest.TestCase):
         return d
 
     def test_green_recheck_skips_lap_and_marks_merged(self):
-        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: "pass")
+        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: ("pass", None))
         state = supervisor.load_state(deps["state_path"])
         with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
                                         os.path.join(self.tmp, "log.jsonl")):
@@ -431,7 +431,7 @@ class TestDispatchRedRecheck(unittest.TestCase):
     def test_red_recheck_dispatches_normally(self):
         calls = []
         deps = self.deps({"issue": 5, "path": "claim.json"},
-                         lambda issue: calls.append(issue) or "fail")
+                         lambda issue: calls.append(issue) or ("fail", None))
         state = supervisor.load_state(deps["state_path"])
         with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
                                         os.path.join(self.tmp, "log.jsonl")):
@@ -440,17 +440,23 @@ class TestDispatchRedRecheck(unittest.TestCase):
         self.assertEqual(calls, [5])
         self.assertEqual(state["lap"]["issue"], 5)
 
-    def test_recheck_crash_treated_as_red_and_dispatches(self):
-        # the oracle failing must not silently mark an issue merged
-        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: None)
+    def test_recheck_error_verdict_still_dispatches(self):
+        # the recheck instrument failing must not silently mark an issue
+        # merged NOR skip it — a spent lap is recoverable, stranded is not
+        deps = self.deps({"issue": 5, "path": "claim.json"},
+                         lambda issue: ("error", "RuntimeError: oracle blew up"))
         state = supervisor.load_state(deps["state_path"])
         with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH",
                                         os.path.join(self.tmp, "log.jsonl")):
             d = supervisor.dispatch(state, 1000.0, deps)
         self.assertEqual(d, "dispatched")
 
-    def test_red_recheck_verdict_logged(self):
-        deps = self.deps({"issue": 5, "path": "claim.json"}, lambda issue: "pass")
+
+    def test_recheck_error_verdict_logged_with_detail(self):
+        # audit #1: a harness failure must be distinguishable from "still
+        # RED" in the red-recheck row — verdict="error" plus detail=<repr>
+        deps = self.deps({"issue": 5, "path": "claim.json"},
+                         lambda issue: ("error", "RuntimeError: oracle blew up"))
         state = supervisor.load_state(deps["state_path"])
         log = os.path.join(self.tmp, "log.jsonl")
         with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", log):
@@ -458,8 +464,37 @@ class TestDispatchRedRecheck(unittest.TestCase):
         with open(log) as f:
             rows = [json.loads(line) for line in f]
         recheck = [r for r in rows if r["event"] == "red-recheck"][0]
-        self.assertEqual(recheck["issue"], 5)
-        self.assertEqual(recheck["verdict"], "pass")
+        self.assertEqual(recheck["verdict"], "error")
+        self.assertEqual(recheck["detail"], "RuntimeError: oracle blew up")
+
+    def test_red_recheck_exception_returns_error_verdict_with_detail(self):
+        # the real red_recheck: verify blowing up returns ("error", repr),
+        # never None (None made instrument failure == "still RED")
+        import lap as lapmod
+        import verify
+        wt = tempfile.mkdtemp(prefix="recheck-wt-")
+        with unittest.mock.patch.object(
+                lapmod, "worktree_for",
+                lambda issue, prefix="recheck": wt), \
+             unittest.mock.patch.object(
+                verify, "verify_candidate",
+                side_effect=RuntimeError("scenario dir unreadable")):
+            verdict, detail = supervisor.red_recheck(7)
+        self.assertEqual(verdict, "error")
+        self.assertIn("scenario dir unreadable", detail)
+
+    def test_red_recheck_clean_path_returns_verdict_no_detail(self):
+        import lap as lapmod
+        import verify
+        wt = tempfile.mkdtemp(prefix="recheck-wt-")
+        with unittest.mock.patch.object(
+                lapmod, "worktree_for",
+                lambda issue, prefix="recheck": wt), \
+             unittest.mock.patch.object(
+                verify, "verify_candidate",
+                lambda cwd, pid, sdir, issue=None: {"verdict": "fail"}):
+            verdict, detail = supervisor.red_recheck(8)
+        self.assertEqual(verdict, "fail")
 
 class TestReconcileDeadClaims(unittest.TestCase):
     """L-009 reap + crash-retry accounting: crashed laps are counted, never
