@@ -78,6 +78,8 @@ def runtime_log(event, path=None, **fields):
       notify-error — a notify receipt write or POST failed (detail names which
         and the exception); the notification is still best-effort, but its
         failure is now observable in the durable log.
+      kill-failed — both SIGTERM and SIGKILL failed on a lap pid (pid, detail);
+        the child may be an orphan still touching the heartbeat file.
     """
     path = path or RUNTIME_LOG_PATH
     row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "event": event}
@@ -395,6 +397,29 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
 
 
 
+def kill_lap(lap):
+    """Kill the lap's child process. SIGTERM first; on failure escalate to
+    SIGKILL (RunKiller pattern — a failed SIGTERM leaves an orphan whose
+    fresh heartbeat masks the NEXT lap's death). ProcessLookupError = already
+    dead, fine; any other OSError (e.g. PermissionError = not ours) logs a
+    kill-failed row with pid and detail."""
+    pid = lap.get("pid")
+    if not pid:
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        except OSError as e2:
+            runtime_log("kill-failed", pid=pid,
+                        detail="SIGTERM %r, SIGKILL %r" % (e, e2))
+
+
 def main():
     """Real loop: claim -> dispatch -> watch -> park/retry per selector budget."""
     from selector import OUTCOMES, break_stale_claim, claim_next
@@ -414,13 +439,7 @@ def main():
                                 stdout=logf, stderr=subprocess.STDOUT)
         lap["pid"] = proc.pid
 
-    def kill_lap(lap):
-        pid = lap.get("pid")
-        if pid:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                pass
+
 
     def lap_outcome(lap):
         """A dead lap's terminal outcome comes from its result file.

@@ -565,6 +565,67 @@ class TestNotifyErrorRows(unittest.TestCase):
         self.assertIn("notify POST failed", row["detail"])
         self.assertIn("ntfy down", row["detail"])
 
+
+class TestKillLap(unittest.TestCase):
+    """G4 (audit row 31): a failed SIGTERM must escalate to SIGKILL —
+    an orphan child's fresh heartbeat otherwise masks the NEXT lap's
+    death. A kill that fails entirely must be observable."""
+
+    def setUp(self):
+        import tempfile as _t
+        self.tmp = _t.mkdtemp()
+        self.log = os.path.join(self.tmp, "interventions.jsonl")
+        self._l = unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log)
+        self._l.start()
+        self.addCleanup(self._l.stop)
+
+    def rows(self):
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def test_sigterm_failure_escalates_to_sigkill(self):
+        import signal
+        calls = []
+
+        def fake_kill(pid, sig):
+            calls.append((pid, sig))
+            if sig == signal.SIGTERM:
+                raise OSError(1, "nope")
+
+        with unittest.mock.patch.object(supervisor.os, "kill", side_effect=fake_kill):
+            supervisor.kill_lap({"pid": 123})
+        sigs = [sig for _, sig in calls]
+        self.assertIn(signal.SIGTERM, sigs)
+        self.assertIn(signal.SIGKILL, sigs)  # escalated
+        self.assertEqual(self.rows(), [])  # SIGKILL worked, no row
+
+    def test_both_signals_fail_logs_kill_failed(self):
+        import signal
+        def boom(pid, sig):
+            raise OSError(1, "nope")
+        with unittest.mock.patch.object(supervisor.os, "kill", side_effect=boom):
+            supervisor.kill_lap({"pid": 123})
+        (row,) = self.rows()
+        self.assertEqual(row["event"], "kill-failed")
+        self.assertEqual(row["pid"], 123)
+        self.assertIn("SIGTERM", row["detail"])
+        self.assertIn("SIGKILL", row["detail"])
+
+    def test_already_dead_is_quiet(self):
+        import signal
+        def gone(pid, sig):
+            raise ProcessLookupError()
+        with unittest.mock.patch.object(supervisor.os, "kill", side_effect=gone):
+            supervisor.kill_lap({"pid": 123})
+        self.assertEqual(self.rows(), [])
+
+    def test_no_pid_is_noop(self):
+        supervisor.kill_lap({})
+        self.assertEqual(self.rows(), [])
+
+
 class TestReconcileDeadClaims(unittest.TestCase):
     """L-009 reap + crash-retry accounting: crashed laps are counted, never
     silently retried."""
