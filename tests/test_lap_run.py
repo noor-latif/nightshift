@@ -280,6 +280,32 @@ class TestCostCeilingGate(unittest.TestCase):
             self.assertEqual(json.load(f)["outcome"], "success")
 
 
+class TestMergeEvidencePassThrough(unittest.TestCase):
+    """Audit gap #4: full_merge must receive the REAL verify evidence —
+    the hardcoded {\"verdict\": \"pass\"} made merge.py's gate_green green
+    by construction."""
+
+    def test_full_merge_receives_verify_evidence(self):
+        real_evidence = {"verdict": "pass", "checks": [{"status": "pass"}],
+                         "marker": "distinctive"}
+        seen = {}
+
+        def recorder(cwd, pid_file, scenarios_dir, issue=None):
+            return real_evidence
+
+        def merge_recorder(issue, repo, wt, ev):
+            seen["evidence"] = ev
+            return {"merged": True, "pr": 1, "merge_sha": "abc"}
+
+        with FakeLapEnv("none"):
+            with unittest.mock.patch.object(lap.verify, "verify_candidate",
+                                            side_effect=recorder), \
+                 unittest.mock.patch.object(lap.merge, "full_merge",
+                                           side_effect=merge_recorder):
+                lap.run(FakeLapEnv.ISSUE)
+        self.assertEqual(seen["evidence"], real_evidence)
+
+
 def _patch_lap_worktree(wt):
     import lap as lapmod
     return unittest.mock.patch.object(lapmod, "worktree_for",

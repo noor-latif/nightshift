@@ -463,7 +463,7 @@ def run(issue):
         # local branch from origin/main — plain push is then rejected forever.
         # --force-with-lease keeps the retry deterministic.
         _git(["push", "--force-with-lease", "-u", "origin", "agent/issue-%d" % issue], worktree)
-        m = merge.full_merge(issue, GITHUB_REPO, worktree, {"verdict": "pass"})
+        m = merge.full_merge(issue, GITHUB_REPO, worktree, evidence)
         if not m.get("merged"):
             return finish(lap, "failure", gate="merge", error=m)
         lap.event("merged", pr=m.get("pr"), merge_sha=m.get("merge_sha"))
