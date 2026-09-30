@@ -703,13 +703,22 @@ class TestReconcileDeadClaims(unittest.TestCase):
         self.assertEqual(len(dead), 1)
         self.assertEqual(state["issues"]["5"]["retries"], 3)
 
-    def test_unparseable_claim_reaped(self):
+    def test_unparseable_claim_reaped_and_accounted_from_filename(self):
         path = os.path.join(self.claims, "issue-5.json")
         with open(path, "w") as f:
             f.write("not json")
-        dead = self.run_reconcile({"issues": {}})
+        state = {"issues": {}}
+        dead = self.run_reconcile(state)
         self.assertEqual(len(dead), 1)
-        self.assertEqual(dead[0][1]["issue"], None)
+        self.assertEqual(dead[0][0], path)
+        self.assertEqual(dead[0][1]["issue"], 5)
+        self.assertEqual(state["issues"]["5"]["retries"], 1)
+        self.assertEqual(state["issues"]["5"]["disposition"], "retry")
+        with open(self.log) as f:
+            rows = [json.loads(line) for line in f]
+        self.assertEqual(rows[-1]["event"], "intervention")
+        self.assertEqual(rows[-1]["issue"], 5)
+        self.assertIn("crash counted at reap", rows[-1]["detail"])
 
     def test_foreign_result_file_not_terminal(self):
         # result for a different issue must not mark this claim terminal

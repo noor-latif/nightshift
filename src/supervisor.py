@@ -367,8 +367,20 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
         try:
             claim = read_claim(path)
         except Exception:
-            dead.append((path, {"issue": None}))
-            continue
+            # A torn claim still carries its issue identity in the canonical
+            # filename. Recover it so the normal crash-accounting path runs.
+            try:
+                issue = int(name[len("issue-"):-len(".json")])
+            except ValueError:
+                issue = None
+            claim = {"issue": issue}
+            if issue is None:
+                runtime_log("intervention",
+                            detail="UNATTRIBUTABLE orphan claim reaped: filename has no issue number: %s"
+                                   % path,
+                            claim=path)
+                dead.append((path, claim))
+                continue
         issue = claim.get("issue")
         if issue is not None and issue == live_issue:
             continue  # the live lap owns this claim; mid-flight ≠ orphan
