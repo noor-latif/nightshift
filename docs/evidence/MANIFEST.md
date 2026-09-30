@@ -18,7 +18,7 @@ Note 2026-09-29: the sed form of this command silently no-ops on \b under sed 0.
 
 1. **Hostnames**: `nixlab` and any `*.latif.se` / private hostname → `[redacted-host]`.
 2. **Loopback ports**: `127.0.0.1:<port>` → `127.0.0.1:[redacted-port]` (loopback literal kept).
-3. **ntfy topics**: every `nightshift-<hex16>` literal (old `nightshift-388c2cd67dbf9d80`, new `nightshift-667cee7dc6ae22a6`) → `[redacted-ntfy-topic]`.
+3. **ntfy topics**: every `nightshift-<hex16>` literal → `[redacted-ntfy-topic]`.
 4. **Env var references**: `SURPLUS_INTELLIGENCE_API_KEY` as a NAME is allowed (whitelisted; already in the public repo). No key VALUES were found anywhere (verified pre- and post-copy; see verification block).
 5. **Paths**: `/home/noor/` → `~/`. No other path changes.
 6. **Whitepaper**: `NIGHTSHIFT_WHITEPAPER.md` verified leak-clean pre-copy (0 hits on all patterns); copied; sed applied regardless (0 substitutions, as expected).
@@ -26,7 +26,8 @@ Note 2026-09-29: the sed form of this command silently no-ops on \b under sed 0.
 ## Known-public items (no action)
 
 - Public repo `settings.py` carries dormant alias `REPO_HOST="nixlab"` — pre-existing, public; not touched here.
-- Old ntfy topic `nightshift-388c2cd67dbf9d80` exists in the **public repo's git history**; short of a history rewrite it stays there. Recommendation: rotate the subscription — **already done**; no further action.
+- Old ntfy topic value exists in the **public repo's git history**; short of a history rewrite it stays there. Recommendation: rotate the subscription — **already done**; no further action.
+- Both prior ntfy topic values (pre-2026-09-30 rotations) persist in the public repo's git history; the remedy is rotation (done 2026-09-30), not history rewriting.
 
 ## Exclusions (and why)
 
