@@ -244,6 +244,8 @@ def handle_lap_end(state, outcome, now, deps):
     notify_fn = deps["notify"]
     if outcome == "success":
         notify_fn("lap issue %d: GREEN" % issue)
+    elif outcome == "success-close-failed":
+        notify_fn("lap issue %d: GREEN (issue close failed)" % issue)
     else:
         notify_fn("lap issue %d: %s (%s)" % (issue, outcome.upper(), disposition))
     state["lap"] = None
@@ -454,6 +456,7 @@ def main():
             return "crash"
         if r.get("issue") != lap["issue"] or r.get("outcome") not in OUTCOMES:
             return "crash"
+        lap["gate"] = r.get("gate")
         return r["outcome"]
 
     box = {}

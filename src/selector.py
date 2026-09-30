@@ -11,7 +11,7 @@ import time
 
 from settings import CLAIMS_DIR, LAP_WALLCLOCK_LIMIT_S, RETRY_BUDGET
 
-OUTCOMES = ("success", "failure", "timeout", "crash", "queue-empty",
+OUTCOMES = ("success", "success-close-failed", "failure", "timeout", "crash", "queue-empty",
             "apply_incomplete")
 
 
@@ -112,7 +112,7 @@ def handle_outcome(outcome, issue, state, now):
         raise ValueError("unknown outcome: %r" % (outcome,))
     key = str(issue)
     rec = state.setdefault("issues", {}).setdefault(key, {"retries": 0})
-    if outcome == "success":
+    if outcome in ("success", "success-close-failed"):
         rec["disposition"] = "merged"
         return "merged"
     if outcome == "queue-empty":
