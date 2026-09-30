@@ -1,0 +1,35 @@
+{
+ "name": "parse-stream-malformed-chunk",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import sys\nsys.path.insert(0, 'src')\nimport agent\ntry:\n    agent.parse_stream(b'data: NOT-JSON {\\n\\ndata: {' + b'\"choices\":[{\"finish_reason\":\"stop\"}]}\\n\\n')\nexcept agent.TransientError:\n    print('K5-RED-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K5-RED-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import sys\nsys.path.insert(0, 'src')\nimport agent\nclass R:\n    def __init__(self, raw):\n        self._raw = raw\n    def read(self):\n        return self._raw\n    def __enter__(self):\n        return self\n    def __exit__(self, *a):\n        return False\nclass Op:\n    def __init__(self, resps):\n        self.resps = list(resps)\n        self.calls = 0\n    def open(self, req, timeout=None):\n        self.calls += 1\n        return R(self.resps.pop(0))\nbad = b'data: {' + b'\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\\n\\ndata: NOT-JSON {\\n\\ndata: {' + b'\"choices\":[{\"finish_reason\":\"stop\"}]}\\n\\n'\nclean = open('tests/fixtures/sse_stream.txt', 'rb').read()\nop = Op([bad, clean])\nr = agent.chat([{'role': 'user', 'content': 'x'}], 'm', api_key='k', opener=op)\nassert r['finish_reason'] == 'stop', r\nassert op.calls == 2, op.calls\nprint('K5-C2-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K5-C2-GREEN"
+  },
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import sys\nsys.path.insert(0, 'src')\nimport agent\nr = agent.parse_stream(open('tests/fixtures/sse_stream.txt', 'rb').read())\nassert r['content'] == 'OK', r\nassert r['reasoning'] == 'thinking...', r\nassert r['finish_reason'] == 'stop', r\nassert r['usage']['cost'] == 0.00001, r\nprint('K5-C3-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K5-C3-GREEN"
+  }
+ ]
+}

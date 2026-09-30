@@ -1,0 +1,15 @@
+{
+ "name": "tick-error-no-strand",
+ "assertions": [
+  {
+   "kind": "exec",
+   "argv": [
+    "python3",
+    "-c",
+    "import os, sys, tempfile, time\nsys.path.insert(0, 'src')\nimport selector\nimport supervisor\nimport unittest.mock\ntmp = tempfile.mkdtemp()\nclaims = os.path.join(tmp, 'claims')\nimport os, tempfile\ntmp = tempfile.mkdtemp()\ngh = os.path.join(tmp, 'fakegh')\nopen(gh, 'w').write('#!/bin/sh\\nif [ \"$1\" = \"issue\" ]; then echo \\'[{\"number\": 18, \"createdAt\": \"2026-01-01T00:00:00Z\"}]\\'; else echo \"[]\"; fi\\n')\nos.chmod(gh, 0o755)\nos.rename(gh, os.path.join(tmp, 'gh'))\ngh = os.path.join(tmp, 'gh')\nlog = os.path.join(tmp, 'interventions.jsonl')\nresult = os.path.join(tmp, 'lap-result.json')\nbox = {}\ndef mkdeps(start):\n    return {\n        'state_path': os.path.join(tmp, 'state.json'),\n        'notify': lambda text: None,\n        'claim': lambda now: selector.claim_next(\n            'r/x', issues_dir=claims, now=now, gh=gh,\n            dispositions=(box.get('state') or {}).get('issues', {})),\n        'start_lap': start,\n        'kill_lap': lambda lap: None,\n        'lap_outcome': lambda lap: 'crash',\n        'reconcile': lambda now: supervisor.reconcile_dead_claims(\n            now, box.get('state') or {}, claims, result_path=result),\n        'break_claim': selector.break_stale_claim,\n        'red_recheck': lambda issue: 'fail',\n        'reconcile_observations': [],\n    }\ndef boom(issue, lap):\n    raise RuntimeError('spawn failed')\ndef healthy(issue, lap):\n    lap.update(pid=12345)\nstate = {'issues': {}, 'lap': None, 'started_at': None}\nbox['state'] = state\nwith unittest.mock.patch.object(supervisor, 'RUNTIME_LOG_PATH', log):\n    try:\n        supervisor.tick(state, time.time(), mkdeps(boom))\n        raise SystemExit('tick1 should have raised')\n    except RuntimeError as e:\n        supervisor.runtime_log('tick-error', error=repr(e))\n    assert os.path.exists(os.path.join(claims, 'issue-18.json')), 'claim missing'\n    state2 = supervisor.load_state(os.path.join(tmp, 'state.json'))\n    box['state'] = state2\n    ev2 = supervisor.tick(state2, time.time(), mkdeps(healthy))\nrows = [r for r in open(log) if '\"tick-error\"' in r]\nassert rows, 'tick-error row must still be written'\nassert any('dispatch:dispatched' in e for e in ev2), ev2\nprint('K6-RED-GREEN')\n"
+   ],
+   "expected_exit": 0,
+   "expect_stdout_fragment": "K6-RED-GREEN"
+  }
+ ]
+}
