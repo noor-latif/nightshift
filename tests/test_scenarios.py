@@ -25,23 +25,45 @@ NAME_TO_ISSUE = {
     "verify-hold-captured": 4,
     "parse-stream-malformed-chunk": 5,
     "tick-error-no-strand": 6,
+    # dogfood queue (filed 2026-09-30): scenarios-dogfood/ oracles for the
+    # deferred audit Layer-1 gaps; #6's oracle is re-queued there too
+    "close-failure-not-crash": 12,
+    "reap-attributes-issue": 13,
+    "deploy-timeout-evidenced": 14,
 }
+
+# the dogfood dir is NOT in the repo: it lives in the self-run deployment
+# (~/nightshift-selfrun/scenarios-dogfood). Guards read it via env override
+# SCENARIOS_DOGFOOD_DIR, defaulting to the sibling deployment path; the
+# self-run test runner sets it explicitly.
+DOGFOOD_DIR = os.environ.get(
+    "SCENARIOS_DOGFOOD_DIR",
+    os.path.expanduser("~/nightshift-selfrun/scenarios-dogfood"))
+DOGFOOD_ISSUES = {6, 12, 13, 14}
 
 
 class TestSelfRunOracleAlignment(unittest.TestCase):
     def setUp(self):
         self.dir = os.path.join(os.path.dirname(__file__), "..", "scenarios")
 
-    def load(self, n):
-        with open(os.path.join(self.dir, "issue-%d.json" % n)) as f:
+    def sources(self):
+        # repo scenarios/ for #1-#6; the deployment's scenarios-dogfood/
+        # for the dogfood queue (#6 re-queued + #12-#14). Same checks both.
+        for d, issues in ((self.dir, SELF_RUN_ISSUES),
+                          (DOGFOOD_DIR, sorted(DOGFOOD_ISSUES))):
+            for n in issues:
+                yield d, n
+
+    def load(self, d, n):
+        with open(os.path.join(d, "issue-%d.json" % n)) as f:
             return json.load(f)
 
     def test_each_issue_file_gates_its_own_issue(self):
         # a scenario in the wrong issue-<n>.json is a crossed gate: the
         # factory fixing issue N would be held RED by another issue's
         # oracle forever. Name↔number must match the filed-issue map.
-        for n in SELF_RUN_ISSUES:
-            sc = self.load(n)
+        for d, n in self.sources():
+            sc = self.load(d, n)
             self.assertIn(sc["name"], NAME_TO_ISSUE,
                           "unknown scenario name in issue-%d.json" % n)
             self.assertEqual(NAME_TO_ISSUE[sc["name"]], n,
@@ -52,15 +74,16 @@ class TestSelfRunOracleAlignment(unittest.TestCase):
         # stdout markers are run evidence; K<n>-* must belong to issue-<n>.
         # checked both in expect_stdout_fragment and inside argv -c sources
         # (print targets), so a relabel miss fails here, not in evidence.
-        for n in SELF_RUN_ISSUES:
-            sc = self.load(n)
+        # K(\d+)-: dogfood issue numbers are multi-digit (K12-, K13-, K14-).
+        for d, n in self.sources():
+            sc = self.load(d, n)
             for a in sc["assertions"]:
                 frag = a.get("expect_stdout_fragment")
                 if frag:
                     self.assertRegex(frag, r"^K%d-" % n,
                                      "issue-%d.json fragment %r" % (n, frag))
                 if a["argv"][1:2] == ["-c"]:
-                    fams = set(re.findall(r"K(\d)-", a["argv"][2]))
+                    fams = set(re.findall(r"K(\d+)-", a["argv"][2]))
                     self.assertEqual(fams, {str(n)},
                                      "issue-%d.json argv carries markers %s"
                                      % (n, fams))
@@ -68,8 +91,8 @@ class TestSelfRunOracleAlignment(unittest.TestCase):
     def test_oracles_are_exec_shaped(self):
         # all-exec is the no-boot contract: a boot-shaped assertion in a
         # self-run oracle would demand an app.py nightshift does not have
-        for n in SELF_RUN_ISSUES:
-            sc = self.load(n)
+        for d, n in self.sources():
+            sc = self.load(d, n)
             self.assertTrue(sc["assertions"], "issue-%d.json has no assertions" % n)
             for a in sc["assertions"]:
                 self.assertEqual(a["kind"], "exec")
