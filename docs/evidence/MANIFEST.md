@@ -310,10 +310,10 @@ Note 2026-09-29: the sed form of this command silently no-ops on \b under sed 0.
 
 Source: `~/nightshift-selfrun/` (read-only). Layout mirrors the S1 conventions, namespaced under `selfrun/` so S1's `state/` tree is untouched:
 
-- `selfrun/state/interventions.jsonl` — the scored log (launch-3, 08:47:20Z→10:00:00Z): renamed copy of `interventions.jsonl.scored-snapshot`, byte-identical to the live log (verified by diff). S1 precedent for the rename.
+- `selfrun/state/interventions.jsonl` — the scored log (launch-3, 08:47:20Z→10:00:00Z): renamed copy of `interventions.jsonl.scored-snapshot`, byte-identical to the ROTATED scored file `interventions.jsonl.scored-launch3-20260929` (rotation 2026-09-30, disclosed in SUPERVISED_LAP_2026-09-30.md; the live log was rotated pre-lap and now carries only validation-lap rows). S1 precedent for the rename.
 - `selfrun/state/interventions.jsonl.aborted-launch1-20260929T101550`, `.aborted-launch2-20260929T104222` — disclosed adjacent aborted-window logs (stale-harness checkout/truncation; false wiring-report incident), per the S1 "scored log + all aborted windows disclosed adjacent" convention.
 - `selfrun/state/lap-result.json.supervised-issue1-20260929T100624` — the supervised issue-#1 validation lap's terminal (PR #7, pre-launch).
-- `selfrun/state/state.json` — terminal dispositions (#2–#5 merged, #6 parked retries=3).
+- `selfrun/state/state.json` — terminal dispositions at publication (#2–#5 merged, #6 parked retries=3); the live source was subsequently rewritten by the 2026-09-30 supervised lap (copy is the published-moment snapshot).
 - `selfrun/state/evidence/20260929T*-issue-*` (16 dirs incl. supervised/aborted-suffixed) — per-lap evidence, copied verbatim; same file classes as S1's dirs.
 - `selfrun/state/evidence/ntfy/receipts.json` + `ntfy.aborted-launch2-20260929T104222/receipts.json` — delivery receipts; no topic literal present (grep-verified).
 - `selfrun/scenarios/issue-1..6.json` — the K1–K6 exec-kind oracles used by the run's red-recheck and verify rungs.
@@ -330,11 +330,11 @@ Inventory (all rows perl-processed; substitutions recorded per row):
 | `selfrun/scenarios/issue-4.json` | none | SELF_AUDIT_2026-09-29.md K1-K6 oracles (exec-kind); SELF_RUN_SCORE (red-recheck/verify-green usage) |
 | `selfrun/scenarios/issue-5.json` | none | SELF_AUDIT_2026-09-29.md K1-K6 oracles (exec-kind); SELF_RUN_SCORE (red-recheck/verify-green usage) |
 | `selfrun/scenarios/issue-6.json` | none | SELF_AUDIT_2026-09-29.md K1-K6 oracles (exec-kind); SELF_RUN_SCORE (red-recheck/verify-green usage) |
-| `selfrun/state/interventions.jsonl` | none | renamed copy of interventions.jsonl.scored-snapshot (SELF_RUN_SCORE scored log, launch-3); byte-identical to live log |
+| `selfrun/state/interventions.jsonl` | none | renamed copy of interventions.jsonl.scored-snapshot (SELF_RUN_SCORE scored log, launch-3); byte-identical to the ROTATED scored file `interventions.jsonl.scored-launch3-20260929` (rotation 2026-09-30, disclosed in SUPERVISED_LAP_2026-09-30.md; the live log was rotated pre-lap and now carries only validation-lap rows) |
 | `selfrun/state/interventions.jsonl.aborted-launch1-20260929T101550` | none | disclosed adjacent aborted-window log (SELF_RUN_SCORE_2026-09-29.md; stale-harness checkout/truncation) |
 | `selfrun/state/interventions.jsonl.aborted-launch2-20260929T104222` | none | disclosed adjacent aborted-window log (SELF_RUN_SCORE_2026-09-29.md; false wiring-report incident, corrected at the time) |
 | `selfrun/state/lap-result.json.supervised-issue1-20260929T100624` | none | SELF_RUN_SCORE_2026-09-29.md (issue #1 supervised validation lap, PR #7) |
-| `selfrun/state/state.json` | none | SELF_RUN_SCORE_2026-09-29.md (dispositions: #2-#5 merged, #6 parked) |
+| `selfrun/state/state.json` | none | SELF_RUN_SCORE_2026-09-29.md (dispositions: #2-#5 merged, #6 parked) (source subsequently modified by the 2026-09-30 supervised lap; copy is the published-moment snapshot) |
 | `selfrun/state/evidence/20260929T075718-issue-1.supervised-issue1-20260929T100624/applied.diff` | none | SELF_RUN_SCORE_2026-09-29.md (issue #1 supervised validation lap, PR #7) |
 | `selfrun/state/evidence/20260929T075718-issue-1.supervised-issue1-20260929T100624/claimed.json` | none | SELF_RUN_SCORE_2026-09-29.md (issue #1 supervised validation lap, PR #7) |
 | `selfrun/state/evidence/20260929T075718-issue-1.supervised-issue1-20260929T100624/cost.json` | none | SELF_RUN_SCORE_2026-09-29.md (issue #1 supervised validation lap, PR #7) |
