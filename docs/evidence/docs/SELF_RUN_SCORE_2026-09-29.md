@@ -43,7 +43,7 @@ for completeness). Issues #2–#6 were dispatched and resolved unattended in lau
 | 20260929T095508-issue-6 (killed mutation-apply → PARK) | impl | 0.000459 |
 | **Total (launch-3, 10 laps)** | | **0.005685** |
 
-(One cost ceiling breach: none. `COST_CEILING_USD=0.01` per lap — max observed 0.000779.)
+(Cost ceiling: no runtime ceiling check exists — `COST_CEILING_USD=0.01` is defined in `src/settings.py` and referenced nowhere else in the code. As a measurement, the max observed per-lap cost was 0.000779, ~13× under the $0.01 design budget — no lap came near it, but nothing would have stopped one that did.)
 
 ## Zero-intervention basis (S1 criterion)
 
@@ -112,3 +112,7 @@ Score pinned to: `state/interventions.jsonl.scored-snapshot` (identical bytes).
 Corrected 2026-09-30: #6 attribution (one-char transcription defect in the find
 block, not anchor drift) and failure taxonomy (review ×1, mutation-apply ×4,
 verify ×1, green ×4), evidence re-verified from the per-lap evidence dirs.
+
+Corrected 2026-09-30 (cost ceiling): the parenthetical under the cost table previously
+read as if a ceiling check ran; in fact no runtime enforcement exists — the constant
+is defined-but-unreferenced, and 0.000779 is the measured per-lap maximum.
