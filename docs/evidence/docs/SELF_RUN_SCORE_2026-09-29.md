@@ -116,3 +116,5 @@ verify ×1, green ×4), evidence re-verified from the per-lap evidence dirs.
 Corrected 2026-09-30 (cost ceiling): the parenthetical under the cost table previously
 read as if a ceiling check ran; in fact no runtime enforcement exists — the constant
 is defined-but-unreferenced, and 0.000779 is the measured per-lap maximum.
+
+Corrected 2026-09-30 (post-fix): the statement above was true when written against the pre-fix main; since 582cfa64 the ceiling is enforced as a real runtime gate (add_cost raises CostCeilingExceeded past the cumulative total; the lap then fails at gate='cost').
