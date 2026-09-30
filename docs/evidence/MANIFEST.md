@@ -546,6 +546,8 @@ grep -rInE '(sk-[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z
 find . -type f | wc -l                                                   # 382 (381 corpus + this manifest)
 ```
 
+Note 2026-09-30 (dated correction): the `find . -type f | wc -l` figure of 382 above is the 2026-09-29 packaging-time count retained as the historical record; the 2026-09-30 dogfood publication raised the staged corpus to 450 files (449 + this manifest). The 2026-09-30 pre-push gate ran the amended pattern greps over the whole staged corpus INCLUDING this manifest (topic/nixlab/latif.se/port//home/noor//key-value/token-shapes: 0 corpus-file hits; MANIFEST rule-doc regex literals non-matching by construction).
+
 Whitelisted, expected non-zero: bare `127.0.0.1` loopback literal (without a port), and the env-var NAME `SURPLUS_INTELLIGENCE_API_KEY` (5 files reference the name only, never a value).
 Amended standing rule (2026-09-30, DECISIONS.md): pre-push leak gates run by PATTERN over the whole staged corpus INCLUDING MANIFEST.md (the rule-doc regex literals above are non-matching by construction); the historical greps above are retained as the packaging-time record.
 
