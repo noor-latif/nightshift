@@ -132,12 +132,20 @@ if __name__ == "__main__":
 class TestNotifyGuard(unittest.TestCase):
     """notify is best-effort: an ntfy outage never kills a lap."""
     def setUp(self):
-        # never write the real state/evidence/ntfy receipts (test pollution)
+        # never write the real state/evidence/ntfy receipts (test pollution);
+        # notify failures now append notify-error rows, so the log path
+        # needs the same isolation as the receipts
+        tmp = tempfile.mkdtemp()
         self._p = unittest.mock.patch.object(
             supervisor, "RECEIPTS_PATH",
-            os.path.join(tempfile.mkdtemp(), "receipts.json"))
+            os.path.join(tmp, "receipts.json"))
+        self._l = unittest.mock.patch.object(
+            supervisor, "RUNTIME_LOG_PATH",
+            os.path.join(tmp, "interventions.jsonl"))
         self._p.start()
+        self._l.start()
         self.addCleanup(self._p.stop)
+        self.addCleanup(self._l.stop)
 
     def test_notify_swallows_transport_failure(self):
         import urllib.error
@@ -495,6 +503,67 @@ class TestDispatchRedRecheck(unittest.TestCase):
                 lambda cwd, pid, sdir, issue=None: {"verdict": "fail"}):
             verdict, detail = supervisor.red_recheck(8)
         self.assertEqual(verdict, "fail")
+
+
+class TestNotifyErrorRows(unittest.TestCase):
+    """G2 (audit #5): a receipt-write or POST failure must leave a durable
+    notify-error row — a failed notify is never indistinguishable from a
+    delivered one."""
+
+    def setUp(self):
+        import tempfile as _t
+        self.tmp = _t.mkdtemp()
+        self.log = os.path.join(self.tmp, "interventions.jsonl")
+        # make the receipts write fail: parent of RECEIPTS_PATH is a file
+        blocked = os.path.join(self.tmp, "blocked")
+        with open(blocked, "w") as f:
+            f.write("not a dir")
+        self.receipts = os.path.join(blocked, "ntfy", "receipts.json")
+        self._r = unittest.mock.patch.object(supervisor, "RECEIPTS_PATH", self.receipts)
+        self._l = unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log)
+        self._r.start()
+        self._l.start()
+        self.addCleanup(self._r.stop)
+        self.addCleanup(self._l.stop)
+
+    def rows(self):
+        with open(self.log) as f:
+            return [json.loads(line) for line in f if line.strip()]
+
+    def test_receipt_failure_no_transport_logs_notify_error(self):
+        status = supervisor.notify("x", url="")
+        self.assertIsNone(status)  # still best-effort
+        (row,) = self.rows()
+        self.assertEqual(row["event"], "notify-error")
+        self.assertIn("receipt write failed (no-transport)", row["detail"])
+
+    def test_receipt_failure_after_successful_post_logs_notify_error(self):
+        class Resp:
+            status = 200
+            def read(self):
+                return b"ok"
+        status = supervisor.notify(
+            "x", url="https://ntfy.sh/t",
+            opener=type("O", (), {"open": staticmethod(
+                lambda req, timeout: Resp())})())
+        self.assertEqual(status, 200)  # the POST succeeded, lap unaffected
+        (row,) = self.rows()
+        self.assertEqual(row["event"], "notify-error")
+        self.assertIn("receipt write failed (post=200)", row["detail"])
+
+    def test_post_failure_logs_notify_error(self):
+        import urllib.error
+
+        def boom(req, timeout):
+            raise urllib.error.URLError("ntfy down")
+        status = supervisor.notify(
+            "x", url="https://ntfy.sh/t",
+            opener=type("O", (), {"open": staticmethod(boom)})())
+        self.assertIsNone(status)
+        (row,) = self.rows()
+        self.assertEqual(row["event"], "notify-error")
+        self.assertIn("notify POST failed", row["detail"])
+        self.assertIn("ntfy down", row["detail"])
 
 class TestReconcileDeadClaims(unittest.TestCase):
     """L-009 reap + crash-retry accounting: crashed laps are counted, never

@@ -75,6 +75,9 @@ def runtime_log(event, path=None, **fields):
         Verdict is the closed set pass/fail/hold/error; 'error' means the
         recheck instrument itself failed (an instrument failure, score-attributed
         as such, never read as "still RED") with detail = exception repr.
+      notify-error — a notify receipt write or POST failed (detail names which
+        and the exception); the notification is still best-effort, but its
+        failure is now observable in the durable log.
     """
     path = path or RUNTIME_LOG_PATH
     row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "event": event}
@@ -90,7 +93,12 @@ def notify(text, title="nightshift", url=NTFY_URL, opener=None):
     notification without a receipt is unobservable).
 
     Empty url (NTFY_TOPIC unset): no transport — but the receipt is still
-    written; receipts are the S7 evidence, the phone channel is optional."""
+    written; receipts are the S7 evidence, the phone channel is optional.
+    Fail-visible (G2): a receipt-write or POST failure appends a
+    notify-error row to interventions.jsonl — a failed notify is never
+    indistinguishable from a delivered one. Ceiling: runtime_log writes
+    to the same state dir; if the whole disk is dead nothing can be
+    logged — acceptable, not engineered around."""
     if not url:
         try:
             os.makedirs(os.path.dirname(RECEIPTS_PATH), exist_ok=True)
@@ -98,8 +106,9 @@ def notify(text, title="nightshift", url=NTFY_URL, opener=None):
                 f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                         time.gmtime()),
                                     "status": "no-transport", "message": text}) + "\n")
-        except OSError:
-            pass
+        except OSError as e:
+            runtime_log("notify-error",
+                        detail="receipt write failed (no-transport): %r" % e)
         return None
     try:
         data = json.dumps({"topic": url.rstrip("/").rsplit("/", 1)[-1],
@@ -114,11 +123,13 @@ def notify(text, title="nightshift", url=NTFY_URL, opener=None):
                 f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                         time.gmtime()),
                                     "status": resp.status, "message": text}) + "\n")
-        except OSError:
-            pass  # receipt failure must not kill the lap either
+        except OSError as e:
+            runtime_log("notify-error",
+                        detail="receipt write failed (post=%s): %r" % (resp.status, e))
         return resp.status
     except OSError as e:
         print("notify failed: %s" % e, file=sys.stderr, flush=True)
+        runtime_log("notify-error", detail="notify POST failed: %r" % e)
         return None
 
 
