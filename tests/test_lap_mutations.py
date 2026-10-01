@@ -104,7 +104,23 @@ class TestApplyMutations(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.dir, "app.py")).read(), "x = 1\ny = 1\n")
         self.assertEqual(results[0]["applied"], False)
 
+    def test_near_miss_localizes_first_divergence(self):
+        actual = 'state["issues"][str(claim["issue"])] ["disposition"] = "merged"'
+        anchor = actual.replace(')] ["disposition"]', ')]["disposition"]')
+        with open(os.path.join(self.dir, "app.py"), "w") as f:
+            f.write("header\\n" + actual + "\\nfooter\\n")
+        ok, detail, results = lap.apply_mutations(
+            [mut("app.py", "header\\n" + anchor + "\\nfooter\\n", "ignored")], self.dir)
+        self.assertFalse(ok)
+        self.assertIn("first divergence", detail)
+        self.assertIn("expected line", detail)
+        self.assertIn("actual file line", detail)
+        self.assertIn("first divergence", results[0]["diagnosis"])
+        self.assertEqual(open(os.path.join(self.dir, "app.py")).read(),
+                         "header\\n" + actual + "\\nfooter\\n")
+
     def test_ambiguous_anchor_fails_loud(self):
+
         ok, detail, _ = lap.apply_mutations(
             [mut("app.py", "= 1", "= 2")], self.dir)
         self.assertFalse(ok)
@@ -165,7 +181,22 @@ class TestApplyMutations(unittest.TestCase):
         self.assertEqual(results[0]["anchor_count"], 1)
         self.assertEqual(results[1]["applied"], False)
         self.assertIn(results[1]["error"], ("anchor not found", "anchor occurs 0 times"))
+class TestAnchorFeedback(unittest.TestCase):
+    def test_previous_apply_diagnosis_reaches_retry_prompt(self):
+        result_path = os.path.join(tempfile.mkdtemp(), "lap-result.json")
+        with unittest.mock.patch.object(lap, "RESULT_PATH", result_path), \
+             unittest.mock.patch.object(lap.agent, "implementer_prompt",
+                                        return_value="base prompt"):
+            lap._save_implementer_feedback(
+                19, "first divergence at anchor offset 513; actual file line differs", [])
+            prompt = lap._implementer_prompt(
+                {"title": "t", "body": "b"}, "criteria", 19, [])
+        self.assertIn("first divergence at anchor offset 513", prompt)
+        self.assertIn("Correct this mutation-apply failure", prompt)
+
+
 class TestCheckoutFiles(unittest.TestCase):
+
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         # pin the default view: the suite must be invariant to the launch

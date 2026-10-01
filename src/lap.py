@@ -14,9 +14,11 @@ Liveness: heartbeat touched every 10s; wall-clock breach past the budget
 writes a timeout result and exits (supervisor parks, never re-dispatches).
 """
 
+import difflib
 import glob
 import json
 import os
+
 import re
 import subprocess
 import sys
@@ -53,7 +55,50 @@ LIVE_PORT = 8642  # the rig's live port; PID file below (task contract overrides
 LIVE_PID_FILE = "/tmp/toy-deploy.pid"
 
 
+def _feedback_path(issue):
+    return os.path.join(os.path.dirname(RESULT_PATH) or ".",
+                        "implementer-feedback-%d.json" % issue)
+
+
+def _save_implementer_feedback(issue, detail, results):
+    path = _feedback_path(issue)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w") as f:
+        json.dump({"issue": issue, "detail": detail, "mutations": results}, f,
+                  indent=1, default=str)
+
+
+def _load_implementer_feedback(issue):
+    try:
+        with open(_feedback_path(issue)) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("issue") != issue:
+        return None
+    detail = data.get("detail")
+    return detail if isinstance(detail, str) and detail else None
+
+
+def _clear_implementer_feedback(issue):
+    try:
+        os.remove(_feedback_path(issue))
+    except OSError:
+        pass
+
+
+def _implementer_prompt(data, criteria, issue, files):
+    prompt = agent.implementer_prompt(data, criteria, issue)
+    feedback = _load_implementer_feedback(issue)
+    if feedback:
+        prompt += ("\n\nFeedback from the previous implementer attempt. "
+                   "Correct this mutation-apply failure rather than repeating "
+                   "the same anchor:\n" + feedback)
+    return prompt + "\n\nCurrent checkout files:\n" + "\n".join(files)
+
+
 class LapTimeout(Exception):
+
     pass
 
 
@@ -234,7 +279,60 @@ def _norm_indexed(text):
     return "".join(norm)[:-1], idx[:-1]
 
 
+def _line_context(text, pos):
+    line = text.count("\n", 0, pos) + 1
+    start = text.rfind("\n", 0, pos) + 1
+    end = text.find("\n", pos)
+    if end == -1:
+        end = len(text)
+    return line, pos - start + 1, text[start:end]
+
+
+def _anchor_miss_diagnosis(needle, hay):
+    """Explain the first difference in the best matching file region."""
+    if not hay:
+        return "file is empty; no best-match region exists"
+    match = difflib.SequenceMatcher(None, needle, hay, autojunk=False).find_longest_match(
+        0, len(needle), 0, len(hay))
+    start = max(0, match.b - match.a)
+    start = min(start, max(0, len(hay) - len(needle)))
+    candidate = hay[start:start + len(needle)]
+    limit = min(len(needle), len(candidate))
+    diff = next((i for i in range(limit) if needle[i] != candidate[i]), None)
+    if diff is None:
+        diff = limit
+    anchor_line, anchor_col, expected = _line_context(needle, diff)
+    file_pos = start + min(diff, len(candidate))
+    file_line, file_col, actual = _line_context(hay, file_pos)
+    if diff == limit and len(needle) == len(candidate):
+        return ("best-match region had no differing character despite the miss "
+                "(anchor length %d, file region length %d)" %
+                (len(needle), len(candidate)))
+    return (
+        "best-match region: first divergence at anchor offset %d (line %d, column %d) "
+        "vs file offset %d (line %d, column %d); expected line: %r; "
+        "actual file line: %r" %
+        (diff, anchor_line, anchor_col, file_pos, file_line, file_col,
+         expected, actual)
+    )
+
+
+def _anchor_occurrence_diagnosis(needle, hay, count):
+    positions, cursor = [], 0
+    while len(positions) < 8:
+        found = hay.find(needle, cursor)
+        if found == -1:
+            break
+        positions.append(found)
+        cursor = found + 1
+    lines = [_line_context(hay, p)[0] for p in positions]
+    return ("anchor has %d exact matches at file offsets %s (lines %s); "
+            "ambiguous anchor, so no mutation was applied" %
+            (count, positions, lines))
+
+
 def apply_mutations(mutations, worktree):
+
     """Mutation-apply gate (§4): each anchor must occur exactly once
     (trailing-whitespace-normalized); 0 or >1 → loud fail naming file +
     anchor prefix. Mutations apply in array order, each on the previous
@@ -266,8 +364,13 @@ def apply_mutations(mutations, worktree):
         if count != 1:
             row["error"] = ("anchor not found" if count == 0
                             else "anchor occurs %d times" % count)
+            diagnosis = (_anchor_miss_diagnosis(needle, hay) if count == 0 else
+                         _anchor_occurrence_diagnosis(needle, hay, count))
+            row["diagnosis"] = diagnosis
             return False, ("mutation-apply: %s: anchor occurs %d times (expected 1), "
-                           "anchor prefix: %r" % (name, count, m["find"][:60])), results
+                           "anchor prefix: %r; %s" %
+                           (name, count, m["find"][:60], diagnosis)), results
+
         start = hay.index(needle)
         a = hay_idx[start]
         end = start + len(needle)
@@ -397,8 +500,8 @@ def run(issue):
         lap.event("claimed", title=data["title"])
 
         files = checkout_files(worktree)
-        prompt = (agent.implementer_prompt(data, criteria, issue)
-                  + "\n\nCurrent checkout files:\n" + "\n".join(files))
+        prompt = _implementer_prompt(data, criteria, issue, files)
+
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
                        max_tokens=IMPLEMENTER_MAX_TOKENS,
                        reasoning_effort=IMPLEMENTER_REASONING_EFFORT)
@@ -418,12 +521,16 @@ def run(issue):
         lap._dump("mutations.json", mut_results)
         lap.event("mutation-apply", ok=ok, detail=detail[:500])
         if not ok:
+            _save_implementer_feedback(issue, detail, mut_results)
             if detail.startswith("apply_incomplete"):
+
                 return finish(lap, "apply_incomplete", gate="mutation-apply", error=detail,
                                caught=detail)
             return finish(lap, "failure", gate="mutation-apply", error=detail,
                           caught="anchor miss: mutations did not apply to the checkout")
+        _clear_implementer_feedback(issue)
         lap.check_clock()
+
 
         _git(["add", "-A"], worktree)
         c = subprocess.run(
