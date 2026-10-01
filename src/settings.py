@@ -20,6 +20,7 @@ IMPLEMENTER_MODEL = "gpt-6-luna"
 IMPLEMENTER_MAX_TOKENS = 16384  # luna: 10,118 completion tokens observed on a real prompt
 IMPLEMENTER_REASONING_EFFORT = "high"  # effort=max returns empty content; high is mandatory (luna-qualify)
 REVIEWER_MODEL = "glm-5.3-flash"
+REVIEWER_MAX_TOKENS = int(os.environ.get("REVIEWER_MAX_TOKENS", "8192"))
 RETRY_BUDGET = 2
 MAX_CONCURRENT_LAPS = 1
 # Public-subscription leak fix: the old hardcoded topic is public on origin

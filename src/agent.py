@@ -159,10 +159,16 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
             if attempt == 2:
                 raise
             continue
-        if result["finish_reason"] == "length" and not result["content"]:
-            # reasoning ate the budget → double tokens, never accept null content
+        if result["finish_reason"] == "length":
+            # A length finish is incomplete whether or not it contains text.
+            # Retry at a larger cap, and never let a second capped completion
+            # flow to a caller as though it were complete.
             attempt_max *= 2
             if attempt == 2:
+                if result["content"]:
+                    raise TransientError(
+                        "completion truncated at max_tokens even doubled (%d)" % attempt_max)
+                # reasoning ate the budget → preserve the existing null-content contract
                 raise TransientError("reasoning exhausted max_tokens even doubled (%d)" % attempt_max)
             continue
         return result

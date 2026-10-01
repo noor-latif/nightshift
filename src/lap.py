@@ -42,16 +42,15 @@ from settings import (
     IMPLEMENTER_MODEL,
     IMPLEMENTER_REASONING_EFFORT,
     LAP_WALLCLOCK_LIMIT_S,
-    MIN_MAX_TOKENS,
     SCENARIOS_DIR,
     PRODUCT_REPO,
+    REVIEWER_MAX_TOKENS,
     REVIEWER_MODEL,
 )
 
 RESULT_PATH = os.path.join("state", "lap-result.json")
 LIVE_PORT = 8642  # the rig's live port; PID file below (task contract overrides default)
 LIVE_PID_FILE = "/tmp/toy-deploy.pid"
-REVIEWER_MAX_TOKENS = max(4096, MIN_MAX_TOKENS)
 
 
 class LapTimeout(Exception):
@@ -445,6 +444,12 @@ def run(issue):
         lap.add_cost(rev["usage"], "reviewer")
         with open(os.path.join(lap.evdir, "review.txt"), "w") as f:
             f.write(rev["content"])
+        if rev["finish_reason"] == "length":
+            lap.event("review-truncated", finish_reason="length",
+                      chars=len(rev["content"]))
+            return finish(lap, "failure", gate="review",
+                          error="reviewer completion truncated at output limit",
+                          caught="reviewer completion truncated (finish_reason=length)")
         verdict_m = re.search(r"VERDICT:\s*(accept|reject)", rev["content"], re.I)
         if not verdict_m or verdict_m.group(1).lower() != "accept":
             return finish(lap, "failure", gate="review",

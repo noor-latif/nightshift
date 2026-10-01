@@ -173,6 +173,20 @@ class TestChat(unittest.TestCase):
         self.assertIn(b'"max_tokens": 32', op.calls[1].data)
         self.assertIn(b'"max_tokens": 16', op.calls[0].data)
 
+    def test_nonempty_length_doubles_max_tokens_before_returning(self):
+        truncated = (
+            b'data: {"choices":[{"delta":{"content":"partial review"}}]}\n'
+            b'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n'
+            b"data: [DONE]\n"
+        )
+        op = FakeOpener([FakeResp(truncated), FakeResp(load("sse_stream.txt"))])
+        got = chat([{"role": "user", "content": "x"}], "m",
+                   max_tokens=16, api_key="k", opener=op)
+        self.assertEqual(got["finish_reason"], "stop")
+        self.assertEqual(got["content"], "OK")
+        self.assertEqual(len(op.calls), 2)
+        self.assertIn(b'"max_tokens": 32', op.calls[1].data)
+
     def test_stream_ended_transient_retried_once(self):
         op = FakeOpener([FakeResp(load("sse_truncated.txt")), FakeResp(load("sse_stream.txt"))])
         got = chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
