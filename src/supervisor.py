@@ -224,7 +224,8 @@ def handle_lap_end(state, outcome, now, deps):
     if outcome in ("crash", "timeout"):
         deps["kill_lap"](lap)
     disposition = handle_outcome(outcome, issue, state, now)
-    observed = deps.get("reconcile_observations") or []
+    observed = list(deps.get("reconcile_observations") or [])
+    observed.extend(lap.get("observations") or [])
     runtime_log("lap-end", issue=issue, outcome=outcome,
                 disposition=disposition, gate=lap.get("gate"))
     runtime_log("lap-check", issue=issue, observed=observed)
@@ -469,6 +470,7 @@ def main():
         if r.get("issue") != lap["issue"] or r.get("outcome") not in OUTCOMES:
             return "crash"
         lap["gate"] = r.get("gate")
+        lap["observations"] = r.get("observations") or []
         return r["outcome"]
 
     box = {}

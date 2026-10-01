@@ -188,6 +188,48 @@ def checkout_files(worktree, char_budget=CHECKOUT_CHAR_BUDGET):
     return out
 
 
+def prompt_view_discrepancy(view, usage, min_view_tokens=1000):
+    """Detect a badly wired implementer call whose billed prompt is far
+    smaller than the checkout view rendered into the prompt.
+
+    The gateway's prompt_tokens count and the checkout view are measured in
+    the same lap. A four-characters-per-token estimate is intentionally
+    conservative; only a tenfold-or-more shortfall is anomalous, which keeps
+    normal tokenizer variance and legitimate checkout truncation clean.
+    """
+    if not isinstance(usage, dict):
+        return None
+    raw_billed = usage.get("prompt_tokens")
+    try:
+        billed = int(raw_billed)
+    except (TypeError, ValueError):
+        return None
+    if billed < 0:
+        return None
+    rendered = view if isinstance(view, str) else "\n".join(view or [])
+    rendered_chars = len(rendered)
+    rendered_tokens = (rendered_chars + 3) // 4
+    if rendered_tokens < min_view_tokens or billed * 10 >= rendered_tokens:
+        return None
+    ratio = billed / float(rendered_tokens)
+    return {
+        "type": "prompt-size-vs-view",
+        "attribution": "instrument-anomaly",
+        "role": "implementer",
+        "prompt_tokens": billed,
+        "rendered_view_tokens": rendered_tokens,
+        "rendered_view_chars": rendered_chars,
+        "ratio": round(ratio, 6),
+        "message": (
+            "prompt-size-vs-view discrepancy: implementer billed "
+            "prompt_tokens=%d for a rendered checkout view of approximately "
+            "%d tokens (%d chars); billed/view ratio %.6f is below the "
+            "0.1 sanity threshold" %
+            (billed, rendered_tokens, rendered_chars, ratio)
+        ),
+    }
+
+
 def criteria_from(body):
     m = re.search(r"Acceptance criteria:?\s*\n(.+)", body, re.S | re.I)
     return m.group(1).strip() if m else body
@@ -403,6 +445,7 @@ class Lap:
         self.deadline = time.time() + LAP_WALLCLOCK_LIMIT_S
         self.costs = []
         self.timeline = []
+        self.observations = []
         self._hb_stop = threading.Event()
 
     def event(self, kind, **kw):
@@ -456,13 +499,15 @@ class Lap:
                 os._exit(70)
             self._hb_stop.wait(10)
 
-    def set_result(self, outcome, error=None, gate=None):
+    def set_result(self, outcome, error=None, gate=None, observations=None):
         os.makedirs(os.path.dirname(RESULT_PATH) or ".", exist_ok=True)
         row = {"issue": self.issue, "outcome": outcome, "run_id": self.run_id}
         if gate:
             row["gate"] = gate
         if error:
             row["error"] = str(error)
+        if observations:
+            row["observations"] = observations
         tmp = RESULT_PATH + ".tmp"
         with open(tmp, "w") as f:
             json.dump(row, f)
@@ -471,16 +516,21 @@ class Lap:
 
 def finish(lap, outcome, gate=None, error=None, caught=None):
     """Terminal lap state: verdict evidence + result file for the supervisor."""
+    observations = getattr(lap, "observations", [])
     verdict = {"verdict": "pass" if outcome in ("success", "success-close-failed") else "fail", "outcome": outcome}
     if gate:
         verdict["gate"] = gate
-    if caught:
+    if observations:
+        verdict["observations"] = observations
+        verdict["attribution"] = "instrument-anomaly"
+    if caught and not observations:
         # model claimed work that a gate killed — factory winning (L-000)
         verdict["caught_confabulation"] = caught
     if error is not None:
         verdict["error"] = error if isinstance(error, str) else json.dumps(error, default=str)
     lap._dump("verdict.json", verdict)
-    lap.set_result(outcome, error=verdict.get("error"), gate=gate)
+    lap.set_result(outcome, error=verdict.get("error"), gate=gate,
+                   observations=observations)
     lap.event("lap-end", outcome=outcome, gate=gate)
 
 
@@ -505,6 +555,10 @@ def run(issue):
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
                        max_tokens=IMPLEMENTER_MAX_TOKENS,
                        reasoning_effort=IMPLEMENTER_REASONING_EFFORT)
+        view_observation = prompt_view_discrepancy(files, r.get("usage"))
+        if view_observation:
+            lap.observations.append(view_observation)
+            lap.event("instrument-anomaly", observation=view_observation)
         lap.add_cost(r["usage"], "implementer")
         with open(os.path.join(lap.evdir, "implementer_raw.txt"), "w") as f:
             f.write(r["content"])

@@ -251,6 +251,41 @@ class TestAddCostRows(unittest.TestCase):
         self.assertEqual(data["total_usd"], 1.5)
 
 
+class TestPromptViewSanity(unittest.TestCase):
+    def test_implausibly_small_billed_prompt_is_durable_instrument_observation(self):
+        rendered = "=== app.py ===\nx = 1\n" + ("x" * 80000)
+
+        def cheap_chat(messages, model, max_tokens=None, reasoning_effort=None):
+            if model == lap.IMPLEMENTER_MODEL:
+                content = json.dumps([{"file": "app.py", "find": "x = 1", "replace": "x = 2"}])
+            else:
+                content = "VERDICT: accept"
+            return {"content": content, "finish_reason": "stop",
+                    "usage": {"buyer_cost_micro": 1000, "prompt_tokens": 300}}
+
+        with FakeLapEnv("none") as env:
+            with unittest.mock.patch.object(lap, "checkout_files",
+                                            return_value=[rendered]), \
+                 unittest.mock.patch.object(lap.agent, "chat",
+                                            side_effect=cheap_chat):
+                lap.run(FakeLapEnv.ISSUE)
+        run_ids = sorted(os.listdir(os.path.join(env.base, "evidence")))
+        with open(os.path.join(env.base, "evidence", run_ids[-1], "verdict.json")) as f:
+            verdict = json.load(f)
+        self.assertEqual(verdict["attribution"], "instrument-anomaly")
+        observation = verdict["observations"][0]
+        self.assertEqual(observation["type"], "prompt-size-vs-view")
+        self.assertEqual(observation["prompt_tokens"], 300)
+        self.assertIn("prompt-size-vs-view discrepancy", observation["message"])
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            result = json.load(f)
+        self.assertEqual(result["observations"][0]["type"], "prompt-size-vs-view")
+
+    def test_consistent_billed_prompt_is_clean(self):
+        self.assertIsNone(lap.prompt_view_discrepancy(
+            "x" * 80000, {"prompt_tokens": 20000}))
+
+
 class TestCostCeilingGate(unittest.TestCase):
     """G7: COST_CEILING_USD was a dead constant — the whitepaper's '$0.01
     ceiling' never ran. Exceeding it must end the lap gate='cost' with a
