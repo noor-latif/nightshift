@@ -11,6 +11,7 @@ from agent import (  # noqa: E402
     TransientError,
     chat,
     parse_stream,
+    implementer_prompt,
     reviewer_prompt,
 )
 
@@ -196,6 +197,20 @@ class TestChat(unittest.TestCase):
         op = FakeOpener([FakeResp(load("sse_truncated.txt")), FakeResp(load("sse_truncated.txt"))])
         with self.assertRaises(TransientError):
             chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+
+
+class TestImplementerPrompt(unittest.TestCase):
+    def test_behavior_fix_requires_provided_regression_test(self):
+        # This positive assertion is intentionally RED against the pre-fix prompt.
+        prompt = implementer_prompt(
+            {"title": "Fix behavior", "body": "Acceptance criteria:\n1. Fix it"},
+            "1. The fixed behavior must be covered by a regression test.", 20)
+        flat = " ".join(prompt.split())
+        self.assertIn("mutation set MUST include a regression test", flat)
+        self.assertIn("drive the fixed behavior", flat)
+        self.assertIn("fail on the pre-fix code", flat)
+        self.assertIn("provided files", flat)
+        self.assertIn("provided checkout", flat)
 
 
 class TestReviewerPrompt(unittest.TestCase):

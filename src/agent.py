@@ -98,7 +98,17 @@ def implementer_prompt(issue, criteria, n, _cache={}):
         "{{n}}": str(n),
     }.items():
         body = body.replace(k, v)
-    return body
+    return body + (
+        "\n\nRegression-test mandate:\n"
+        "For every behavior fix, and whenever the acceptance criteria demand a "
+        "regression test, your mutation set MUST include a regression test in the "
+        "provided files (use a writable provided `tests/` file when that view is "
+        "present). The test must drive the fixed behavior and fail on the pre-fix "
+        "code. Use only files shown in the provided checkout; do not create or "
+        "reference files outside that provided-files view. The acceptance criteria "
+        "are the source of truth for WHAT behavior to test; this mandate requires "
+        "THAT a failing-pre-fix test accompany the behavior fix.\n"
+    )
 
 
 def reviewer_prompt(diff, criteria, files="", _cache={}):
