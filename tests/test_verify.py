@@ -411,6 +411,42 @@ class TestNoGitBoot(unittest.TestCase):
         finally:
             server.shutdown()
 
+class TestScenarioHoldIsCaptured(unittest.TestCase):
+    """K4: a Hold from the scenario ladder is HOLD evidence, never a crash.
+
+    The ladder raises Hold when the harness cannot run the check (scenario
+    port range exhausted, candidate never ready). Escaping verify_candidate
+    turns a transient resource condition into a lap crash → retry burn →
+    false park.
+    """
+
+    def test_exhausted_scenario_port_range_returns_hold(self):
+        import socket
+        from unittest import mock
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        try:
+            tmp = tempfile.mkdtemp()
+            scenarios = tempfile.mkdtemp()
+            with open(os.path.join(scenarios, "global.json"), "w") as f:
+                json.dump({"name": "needs-boot", "assertions": [{
+                    "method": "GET",
+                    "url": "http://127.0.0.1:{{port}}/health",
+                    "expected_status": 200,
+                }]}, f)
+            with mock.patch.object(verify, "SCENARIO_PORT_RANGE", (port, port + 1)), \
+                 mock.patch.object(verify, "DEPLOY_MODE", "none"), \
+                 mock.patch.object(verify, "run_unit_tests", return_value=(True, "Ran 1 test")):
+                evidence = verify.verify_candidate(
+                    tmp, os.path.join(tmp, "candidate.pid"), scenarios)
+        finally:
+            sock.close()
+        self.assertEqual(evidence["verdict"], "HOLD")
+        self.assertEqual(evidence["scenarios"][0]["verdict"], "HOLD")
+        self.assertIn("no free port", evidence["scenarios"][0]["checks"][0]["detail"])
+
 class TestScenarioSelection(unittest.TestCase):
     """issue-<n>.json runs only for its issue; global files always run."""
 
