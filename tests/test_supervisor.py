@@ -293,6 +293,17 @@ class TestParkAndContinue(unittest.TestCase):
         self.assertIn("BLOCKED:9", events)
         self.assertNotIn("DRAIN", ",".join(events))
 
+    def test_idle_with_awaiting_review_drains_not_blocks(self):
+        # G5: awaiting-review is terminal (selector.py) — a review-mode night
+        # must DRAIN (exit 0), not report BLOCKED (exit 1) on a finished lap
+        deps = fake_deps(self.tmp, self.notify, claim_result=None)
+        state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
+        state["issues"] = {"21": {"retries": 0, "disposition": "awaiting-review"}}
+        events = supervisor.tick(state, self.now, deps)
+        self.assertIn("dispatch:idle", events)
+        self.assertNotIn("BLOCKED:21", events)
+        self.assertTrue(any(e.startswith("DRAIN") for e in events), events)
+
     def test_blocked_exit_nonzero_drained_exit_zero(self):
         # main-loop: BLOCKED -> exit 1; DRAIN -> clean break (exit 0)
         def run_main(events):

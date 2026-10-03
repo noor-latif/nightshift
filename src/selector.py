@@ -13,6 +13,10 @@ from settings import CLAIMS_DIR, LAP_WALLCLOCK_LIMIT_S, RETRY_BUDGET
 
 OUTCOMES = ("success", "success-close-failed", "failure", "timeout", "crash", "queue-empty",
             "apply_incomplete", "awaiting-review")
+# Dispositions that are final: never re-claimed, never retried. awaiting-review
+# is terminal-by-design (review mode: the owner merge decision is pending), so
+# the supervisor must not read it as a blocked queue either.
+TERMINAL_DISPOSITIONS = ("parked", "timeout-park", "merged", "awaiting-review")
 
 
 def _gh(args, repo, gh="gh"):
@@ -51,7 +55,7 @@ def claim_next(repo, issues_dir=CLAIMS_DIR, now=None, gh="gh", dispositions=None
     for issue in list_open_issues(repo, gh):
         rec = dispositions.get(str(issue["number"]))
         disp = rec.get("disposition") if isinstance(rec, dict) else rec
-        if disp in ("parked", "timeout-park", "merged", "awaiting-review"):
+        if disp in TERMINAL_DISPOSITIONS:
             continue  # terminal dispositions are durable; dispatch must not burn retries again
         if "agent/issue-%d" % issue["number"] in pr_branches:
             continue

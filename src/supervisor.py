@@ -293,9 +293,10 @@ def tick(state, now, deps):
         if d not in ("already-running",):
             events.append("dispatch:" + d)
             if d == "idle":
+                from selector import TERMINAL_DISPOSITIONS
                 issues = state.get("issues", {})
                 blocked = [int(n) for n, r in issues.items()
-                           if r.get("disposition") not in ("parked", "timeout-park", "merged")]
+                           if r.get("disposition") not in TERMINAL_DISPOSITIONS]
                 parked = sum(1 for r in issues.values() if r.get("disposition") in ("parked", "timeout-park"))
                 merged = sum(1 for r in issues.values() if r.get("disposition") == "merged")
                 if blocked:
