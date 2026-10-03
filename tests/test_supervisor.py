@@ -299,10 +299,42 @@ class TestParkAndContinue(unittest.TestCase):
         self.assertEqual(drained, ["DRAIN:1 parked, 0 merged"])
 
     def test_session_wallclock_backstop_notified_and_halted(self):
-        # main-loop backstop: simulated via the same arithmetic it uses
-        session_started = 0.0
-        now = supervisor.LAP_WALLCLOCK_LIMIT_S + 1
-        self.assertTrue(now - session_started > supervisor.LAP_WALLCLOCK_LIMIT_S)
+        # main-loop backstop: drive main() with a clock that crosses the
+        # session budget after one tick — the loop must log session-halt and
+        # stop (an unattended night must not run forever)
+        cwd = tempfile.mkdtemp()  # state writes land here, never the real state/
+        src = os.path.join(os.path.dirname(__file__), "..", "src")
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+            f.write("""
+import sys
+import time as realtime
+sys.path.insert(0, %r)
+import supervisor
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+    def time(self):
+        return self.t
+    def sleep(self, s):
+        self.t += 10 ** 9  # one loop iteration crosses the session budget
+    def __getattr__(self, name):
+        return getattr(realtime, name)  # strftime/gmtime stay real
+supervisor.time = Clock()
+supervisor.tick = lambda state, now, deps: []
+supervisor.load_state = lambda p: {}
+supervisor.save_state = lambda s, p: None
+supervisor.main()
+""" % src)
+        env = {k: v for k, v in os.environ.items() if k != "NTFY_TOPIC"}
+        r = subprocess.run([sys.executable, f.name], capture_output=True,
+                           text=True, cwd=cwd, env=env)
+        os.unlink(f.name)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        with open(os.path.join(cwd, "state", "interventions.jsonl")) as fh:
+            rows = [json.loads(line) for line in fh if line.strip()]
+        halts = [row for row in rows if row["event"] == "session-halt"]
+        self.assertEqual(len(halts), 1, rows)
+        self.assertIn("session wallclock", halts[0]["reason"])
 
     def test_idle_with_open_pr_issue_blocks_not_drains(self):
         deps = fake_deps(self.tmp, self.notify, claim_result=None)
@@ -706,9 +738,6 @@ class TestReconcileDeadClaims(unittest.TestCase):
         dead = self.run_reconcile(state)
         self.assertEqual([c["issue"] for _, c in dead], [18])
         self.assertEqual(state["issues"]["18"]["retries"], 1)
-        with unittest.mock.patch.object(supervisor, "RUNTIME_LOG_PATH", self.log):
-            return supervisor.reconcile_dead_claims(1000.0, state, self.claims,
-                                                    result_path=self.result)
 
     def test_unaccounted_crash_counts_retries_at_reap(self):
         # orphan claim, no terminal result anywhere: the crash must consume

@@ -51,6 +51,7 @@ class TestSettingsEnvOverrides(unittest.TestCase):
     def test_code_paths_empty_entries_dropped(self):
         os.environ["CODE_PATHS"] = " src/*.py , ,*.py,"
         importlib.reload(settings)
+        self.assertEqual(settings.CODE_PATHS, ["src/*.py", "*.py"])
 
     def test_checkout_char_budget_default_and_override(self):
         importlib.reload(settings)

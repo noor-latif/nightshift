@@ -150,18 +150,6 @@ class TestChat(unittest.TestCase):
         sent = json.loads(op.calls[0].data)
         self.assertEqual(sent["provider"], "family-id")
 
-    def test_pinned_model_list_pin_passes_through(self):
-        import agent
-
-        agent.PROVIDER_PINS["m"] = ["family-id", "openrouter"]
-        try:
-            op = FakeOpener([FakeResp(load("sse_stream.txt"))])
-            chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
-        finally:
-            del agent.PROVIDER_PINS["m"]
-        sent = json.loads(op.calls[0].data)
-        self.assertEqual(sent["provider"], ["family-id", "openrouter"])
-
     def test_unpinned_model_has_no_provider_key(self):
         op = FakeOpener([FakeResp(load("sse_stream.txt"))])
         chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)

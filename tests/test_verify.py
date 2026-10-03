@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -363,28 +364,46 @@ class TestCrashClassification(unittest.TestCase):
 class TestNoGitBoot(unittest.TestCase):
     """`boot_cwd: "no-git"` boots a plain copy without .git (issue #18)."""
 
-    def test_copy_excludes_git_and_factory(self):
-        import shutil as _sh
-
+    def test_run_scenario_boots_a_copy_without_git(self):
+        # exercised through run_scenario itself (the production loop), not a
+        # re-implementation of its copy step: the booted candidate reports
+        # whether a .git directory exists in its own cwd
         src = tempfile.mkdtemp()
         os.makedirs(os.path.join(src, ".git"))
         os.makedirs(os.path.join(src, ".factory", "worktrees"))
         with open(os.path.join(src, "app.py"), "w") as f:
-            f.write("x = 1\n")
-        # run_scenario's copy step, exercised through a minimal scenario
-        # object with an immediate HOLD-free boot failure is heavy; assert
-        # the copy logic directly via the same primitives it uses.
-        dst = tempfile.mkdtemp(prefix="factory-nogit-test-")
-        for name in os.listdir(src):
-            if name == ".git" or name.startswith(".factory"):
-                continue
-            s = os.path.join(src, name)
-            if os.path.isfile(s):
-                _sh.copy(s, os.path.join(dst, name))
-            else:
-                _sh.copytree(s, os.path.join(dst, name))
-        self.assertEqual(sorted(os.listdir(dst)), ["app.py"])
-        self.assertFalse(os.path.exists(os.path.join(dst, ".git")))
+            f.write(
+                "import json, os\n"
+                "from http.server import BaseHTTPRequestHandler, HTTPServer\n"
+                "class H(BaseHTTPRequestHandler):\n"
+                "    def do_GET(self):\n"
+                "        body = json.dumps({'status': 'ok', 'revision': 'x',\n"
+                "                           'has_git': os.path.isdir('.git')}).encode()\n"
+                "        self.send_response(200)\n"
+                "        self.send_header('Content-Length', str(len(body)))\n"
+                "        self.end_headers()\n"
+                "        self.wfile.write(body)\n"
+                "    def log_message(self, *a):\n"
+                "        pass\n"
+                "HTTPServer(('127.0.0.1', int(os.environ['FACTORY_PORT'])), H).serve_forever()\n"
+            )
+        subprocess.run(["git", "init", "-q"], cwd=src, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                        "commit", "-qm", "init", "--allow-empty"],
+                       cwd=src, capture_output=True)
+        scenario = {
+            "name": "no-git", "boot_cwd": "no-git",
+            "assertions": [{"method": "GET",
+                            "url": "http://127.0.0.1:{{port}}/health",
+                            "expected_status": 200,
+                            "expect_body_fragment": '"has_git": false'}],
+        }
+        pid_file = os.path.join(tempfile.mkdtemp(), "p.pid")
+        try:
+            result = verify.run_scenario(scenario, src, pid_file)
+        finally:
+            verify.stop_candidate(pid_file)
+        self.assertEqual(result["verdict"], "pass", result)
 
     def test_scenario_ready_path_override_probes_alternate_endpoint(self):
         # wait_ready(path=...) is the readiness contract for scenarios whose
