@@ -66,6 +66,13 @@ class TestParseStream(unittest.TestCase):
         with self.assertRaises(TransientError):
             parse_stream(load("sse_truncated.txt"))
 
+    def test_malformed_data_line_is_transient(self):
+        raw = (b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+               b'data: NOT-JSON {\n\n'
+               b'data: {"choices":[{"finish_reason":"stop"}]}\n\n')
+        with self.assertRaises(TransientError):
+            parse_stream(raw)
+
 
 class TestChat(unittest.TestCase):
     def test_incomplete_read_retried_then_succeeds(self):
@@ -292,15 +299,18 @@ class TestSanitizedTrace(unittest.TestCase):
             self.assertEqual(response["response_metadata"][0]["model"], "served-snapshot")
             self.assertEqual(result["finish_reason"], "stop")
 
-    def test_malformed_json_is_traced_without_adding_retry(self):
+    def test_malformed_json_is_traced_and_retried_once(self):
+        # K5: a garbled SSE data line is transient (one retry), never a hard
+        # crash — and the failed attempt is still traced as "stream-error".
         import tempfile
-        op = FakeOpener([FakeResp(b'data: {bad\n')])
+        op = FakeOpener([FakeResp(b'data: {bad\n'), FakeResp(load("sse_stream.txt"))])
         with tempfile.TemporaryDirectory() as traces:
-            with self.assertRaises(ValueError):
-                chat([], "m", api_key="safe-key", opener=op, trace_dir=traces)
-            self.assertEqual(len(op.calls), 1)
+            result = chat([], "m", api_key="safe-key", opener=op, trace_dir=traces)
+            self.assertEqual(result["content"], "OK")
+            self.assertEqual(len(op.calls), 2)
             with open(os.path.join(traces, "model-calls.jsonl")) as f:
-                self.assertEqual(json.loads(f.readlines()[-1])["phase"], "stream-error")
+                phases = [json.loads(line)["phase"] for line in f if line.strip()]
+            self.assertIn("stream-error", phases)
 
 class TestResponsesTextContract(unittest.TestCase):
     def response(self, status="completed", reason=None):

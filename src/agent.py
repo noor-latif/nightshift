@@ -56,7 +56,10 @@ def parse_stream(raw):
         payload = line[len("data:"):].strip()
         if not payload or payload == "[DONE]":
             continue
-        chunk = json.loads(payload)
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise TransientError("malformed SSE data line: %s" % e) from e
         identity = {k: chunk[k] for k in ("id", "model", "provider", "system_fingerprint", "created")
                     if k in chunk}
         if identity and identity not in metadata:
