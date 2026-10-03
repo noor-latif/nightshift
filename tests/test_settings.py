@@ -79,6 +79,15 @@ class TestSettingsEnvOverrides(unittest.TestCase):
 
 
 class TestNativeConfigBoundary(unittest.TestCase):
+    def _import(self, cfg):
+        import json
+        import subprocess
+        env = dict(os.environ, FACTORY_NATIVE_CONFIG=json.dumps(cfg))
+        return subprocess.run([sys.executable, "-c",
+                               "import settings; print(settings.SUITE_RUNNER, settings.SUITE_TIMEOUT_S)"],
+                              cwd=os.path.dirname(settings.__file__), env=env,
+                              capture_output=True, text=True)
+
     def test_null_empty_shell_and_missing_suite_rejected(self):
         import json
         import subprocess
@@ -93,6 +102,25 @@ class TestNativeConfigBoundary(unittest.TestCase):
                                cwd=os.path.dirname(settings.__file__), env=env,
                                capture_output=True, text=True)
             self.assertNotEqual(r.returncode, 0, cfg)
+
+    def test_suite_runner_default_and_override(self):
+        base = {"verify": [["node", "--test"]], "suite": ["node", "--test"]}
+        r = self._import(base)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "tap 600")
+        r = self._import(dict(base, suite_runner="pytest", suite_timeout_s=900))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "pytest 900")
+
+    def test_suite_runner_and_timeout_rejections(self):
+        base = {"verify": [["node", "--test"]], "suite": ["node", "--test"]}
+        bad = [dict(base, suite_runner="go"),      # phase 2, not accepted yet
+               dict(base, suite_runner=None), dict(base, suite_runner="TAP"),
+               dict(base, suite_timeout_s=59), dict(base, suite_timeout_s=3601),
+               dict(base, suite_timeout_s="soon"), dict(base, suite_timeout_s=None),
+               {"suite_runner": "pytest"}, {"suite_timeout_s": 900}]
+        for cfg in bad:
+            self.assertNotEqual(self._import(cfg).returncode, 0, cfg)
 
 class TestNewFilesBoundary(unittest.TestCase):
     """FACTORY_NEW_FILES is a create-surface boundary: glob entries are

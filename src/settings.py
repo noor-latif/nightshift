@@ -104,6 +104,22 @@ if NATIVE_VERIFY_COMMANDS is not None and NATIVE_SUITE_COMMAND is None:
     raise ValueError("FACTORY_NATIVE_CONFIG native verify requires suite")
 if NATIVE_SUITE_COMMAND is not None and (NATIVE_VERIFY_COMMANDS or []).count(NATIVE_SUITE_COMMAND) != 1:
     raise ValueError("FACTORY_NATIVE_CONFIG suite must designate exactly one verify command")
+# Suite runner selects the authoritative-total PARSER for the suite argv, never
+# a command: a closed enum, no shell, no path into the checkout. Missing =
+# "tap", byte-identical to the historical Node TAP contract. suite_timeout_s
+# replaces the hard-coded 600 s for the suite argv only.
+SUITE_RUNNERS = ("tap", "pytest")
+SUITE_RUNNER = _cfg.get("suite_runner", "tap")
+if SUITE_RUNNER not in SUITE_RUNNERS:
+    raise ValueError("FACTORY_NATIVE_CONFIG suite_runner must be one of %s" % (SUITE_RUNNERS,))
+if NATIVE_SUITE_COMMAND is None and ("suite_runner" in _cfg or "suite_timeout_s" in _cfg):
+    raise ValueError("FACTORY_NATIVE_CONFIG suite_runner/suite_timeout_s require suite")
+try:
+    SUITE_TIMEOUT_S = int(_cfg.get("suite_timeout_s", 600))
+except (TypeError, ValueError):
+    raise ValueError("FACTORY_NATIVE_CONFIG suite_timeout_s must be an integer 60..3600")
+if not 60 <= SUITE_TIMEOUT_S <= 3600:
+    raise ValueError("FACTORY_NATIVE_CONFIG suite_timeout_s must be 60..3600")
 TASK_KIND = _cfg.get("task_kind", "bug")
 MERGE_MODE = _cfg.get("merge_mode", "auto")
 if TASK_KIND not in ("bug", "enhancement") or MERGE_MODE not in ("auto", "review"):

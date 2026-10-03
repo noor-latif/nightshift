@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 import subprocess
@@ -653,6 +654,87 @@ class TestNativeBoundary(unittest.TestCase):
             self.assertEqual(status, "HOLD")
             self.assertTrue(rows[0]["timed_out"])
             self.assertIn("started", rows[0]["output"])
+
+class TestSuiteRunnerDispatch(unittest.TestCase):
+    """suite_runner picks the authoritative-total parser for the suite argv;
+    the default stays tap, so an unconfigured suite is byte-identical."""
+
+    def test_pytest_parser_accepts_one_authoritative_summary_only(self):
+        cases = (("12 passed in 0.05s\n", 12),
+                 ("1 failed, 11 passed in 0.05s\n", 11),
+                 ("2 skipped in 0.01s\n", None),          # all-skipped: no passed count
+                 ("no tests ran in 0.01s\n", None),       # pytest exit 5 signature
+                 ("collected 0 items\n\nno tests ran in 0.01s\n", None),
+                 ("12 passed in 0.05s\n3 passed in 1.00s\n", None),  # duplicate total
+                 ("3 passed\n", None),                    # no summary line
+                 ("", None))
+        for text, expected in cases:
+            self.assertEqual(verify._pytest_test_count(text), expected, repr(text))
+
+    def test_default_runner_parses_tap_not_pytest(self):
+        suite = [sys.executable, "-c", "print('12 passed in 0.05s')"]
+        with tempfile.TemporaryDirectory() as cwd:
+            status, rows = verify._run_native_commands([suite], cwd, suite)
+            self.assertEqual(status, "fail")
+            self.assertIsNone(rows[0]["test_count"])
+            self.assertTrue(rows[0]["vacuous"])
+
+    def test_pytest_runner_passes_a_green_summary(self):
+        suite = [sys.executable, "-c", "print('12 passed in 0.05s')"]
+        with tempfile.TemporaryDirectory() as cwd:
+            status, rows = verify._run_native_commands([suite], cwd, suite,
+                                                       runner="pytest")
+            self.assertEqual(status, "pass")
+            self.assertEqual(rows[0]["test_count"], 12)
+            self.assertNotIn("vacuous", rows[0])
+
+    def test_pytest_zero_tests_signatures_fail(self):
+        # exit 5 ("no tests ran") is already a fail; an all-skipped or
+        # zero-collected run exits 0 and must be rejected as vacuous.
+        zero_exit = [sys.executable, "-c", "print('no tests ran in 0.01s'); raise SystemExit(5)"]
+        green_exit = [sys.executable, "-c", "print('2 skipped in 0.01s')"]
+        with tempfile.TemporaryDirectory() as cwd:
+            for argv, vacuous in ((zero_exit, False), (green_exit, True)):
+                status, rows = verify._run_native_commands([argv], cwd, argv,
+                                                           runner="pytest")
+                self.assertEqual(status, "fail", argv)
+                self.assertIsNone(rows[0]["test_count"], argv)
+                self.assertEqual(rows[0].get("vacuous", False), vacuous, argv)
+
+    def test_suite_timeout_applies_to_the_suite_argv_only(self):
+        slow_suite = [sys.executable, "-u", "-c", "import time; time.sleep(5)"]
+        other = [sys.executable, "-u", "-c", "import time; time.sleep(0.3)"]
+        with tempfile.TemporaryDirectory() as cwd:
+            status, rows = verify._run_native_commands([slow_suite, other], cwd,
+                                                       slow_suite, suite_timeout_s=0.1)
+            self.assertEqual(status, "HOLD")
+            self.assertTrue(rows[0]["timed_out"])
+            self.assertIn("timed out after 0.1s", rows[0]["detail"])
+            self.assertEqual(rows[1]["status"], "pass")
+
+@unittest.skipUnless(importlib.util.find_spec("pytest"), "pytest not installed")
+class TestPytestEndToEnd(unittest.TestCase):
+    """One real pytest run through the gate; skipped where pytest is absent."""
+
+    ARGV = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+
+    def test_green_pytest_suite_is_non_vacuous(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            with open(os.path.join(cwd, "test_two.py"), "w") as f:
+                f.write("def test_a():\n    assert True\n\n"
+                        "def test_b():\n    assert True\n")
+            status, rows = verify._run_native_commands([self.ARGV], cwd, self.ARGV,
+                                                       runner="pytest")
+            self.assertEqual(status, "pass", rows[0]["output"])
+            self.assertEqual(rows[0]["test_count"], 2)
+            self.assertNotIn("vacuous", rows[0])
+
+    def test_empty_pytest_run_is_not_a_pass(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            status, rows = verify._run_native_commands([self.ARGV], cwd, self.ARGV,
+                                                       runner="pytest")
+            self.assertEqual(status, "fail", rows[0]["output"])
+            self.assertIsNone(rows[0]["test_count"])
 
 if __name__ == "__main__":
     unittest.main()

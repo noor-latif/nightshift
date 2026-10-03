@@ -69,15 +69,47 @@ it is not byte-for-byte the old behavior.
   (`assets/../*` never authorizes anything). Empty = edit-only.
 - `FACTORY_NATIVE_CONFIG=<json>` — trusted native commands:
   `{"verify": [[argv...], ...], "suite": [argv...], "prepare": [[argv...]],
+  "suite_runner": "tap|pytest", "suite_timeout_s": 600,
   "task_kind": "bug|enhancement", "merge_mode": "auto|review"}`. The suite is
-  the one verify argv whose authoritative TAP `# tests N` (N > 0) is parsed.
-  Unset = the historical Python gate.
+  the one verify argv whose authoritative total (N > 0) is parsed; the runner
+  picks the parser and defaults to `tap`, so omitting it keeps the historical
+  Node TAP contract unchanged. `suite_timeout_s` (60..3600, default 600)
+  replaces the timeout for the suite argv only; prepare and non-suite verify
+  commands keep 600. Unset = the historical Python gate.
 - `merge_mode: "review"` — stop after local verification: retain a local
   `review/<run-id>` ref and `merge.json`, no push/PR/merge/deploy/close.
 - `REVIEWER_API`/`IMPLEMENTER_API` (`openai-completions|openai-responses`),
   `REVIEWER_REASONING_EFFORT`, `IMPLEMENTER_MAX_TOKENS_FIELD`,
   `FACTORY_HTTP_TIMEOUT_S`, `COST_CEILING_USD` — per-role transport and caps;
   defaults unchanged.
+
+Authoritative suite totals, one parser per runner. The zero-tests signature is
+always a FAIL — never a pass and never a HOLD:
+
+- `tap` (default) — suite `node --test --test-reporter=tap`; total = exactly
+  one `# tests N` line with N > 0. Missing, zero or duplicate `# tests` lines
+  are unknown.
+- `pytest` — suite `python3 -m pytest -q -p no:cacheprovider`; total = exactly
+  one summary line ending `in X.XXs` that carries `N passed`, N >= 1. Exit 5
+  with `no tests ran`, `collected 0 items`, and an all-skipped summary (no
+  `passed` count) are all zero-tests signatures.
+
+A pytest instance, copy-paste shape:
+
+    {
+      "verify": [["python3", "-m", "pytest", "-q", "-p", "no:cacheprovider"]],
+      "suite":  ["python3", "-m", "pytest", "-q", "-p", "no:cacheprovider"],
+      "suite_runner": "pytest",
+      "suite_timeout_s": 900,
+      "task_kind": "bug",
+      "merge_mode": "auto"
+    }
+
+`suite_runner` selects a parser, never a command: it is a closed enum, not a
+shell fragment and not a path into the checkout. pytest is a candidate-side
+runner invoked by argv — the harness's own suite stays stdlib `unittest`
+(`python3 -m unittest discover -s tests`), so the kernel keeps its "no pip
+dependencies" property.
 
 Do not run the supervisor (`src/supervisor.py`) expecting a local trial: it
 dispatches real model calls and remote writes. Configuration details, native

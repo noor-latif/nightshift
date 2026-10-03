@@ -20,7 +20,7 @@ import time
 import tempfile
 from settings import (DEPLOY_MODE, NATIVE_PREPARE_COMMANDS, NATIVE_SUITE_COMMAND,
                       NATIVE_VERIFY_COMMANDS, PROVENANCE_ENV, READY_TIMEOUT_S,
-                      SCENARIO_PORT_RANGE)
+                      SCENARIO_PORT_RANGE, SUITE_RUNNER, SUITE_TIMEOUT_S)
 
 
 class Hold(Exception):
@@ -34,14 +34,36 @@ def _tap_test_count(output):
     return int(totals[0])
 
 
+_PYTEST_SUMMARY = re.compile(r"^.*?\bin\s+\d+\.\d+s\s*$", re.M)  # the single summary line
+_PYTEST_PASSED = re.compile(r"\b(\d+)\s+passed\b")
+
+def _pytest_test_count(output):
+    """One authoritative pytest summary line; missing/duplicate/invalid is unknown.
+
+    The summary is the single line ending in "in X.XXs"; the passed count must
+    come from that same line, so a fabricated "N passed" elsewhere cannot
+    manufacture a total. Zero-tests signatures (exit 5 "no tests ran",
+    "collected 0 items", all-skipped) carry no passed count -> None -> vacuous.
+    """
+    lines = _PYTEST_SUMMARY.findall(output)
+    if len(lines) != 1:
+        return None
+    m = _PYTEST_PASSED.search(lines[0])
+    return int(m.group(1)) if m else None
+
+_SUITE_COUNTERS = {"tap": _tap_test_count, "pytest": _pytest_test_count}
+
 def _command_verdict(rows):
     statuses = {r["status"] for r in rows}
     return "HOLD" if "HOLD" in statuses else ("pass" if statuses == {"pass"} else "fail")
 
 
 def _run_native_commands(commands, cwd, suite_command=None, evidence_dir=None,
-                         timeout_s=600):
-    """Full stdout/stderr artifacts, bounded report; HOLD dominates failure."""
+                         timeout_s=600, runner="tap", suite_timeout_s=None):
+    """Full stdout/stderr artifacts, bounded report; HOLD dominates failure.
+
+    `runner` selects the suite's authoritative-total parser; `suite_timeout_s`
+    overrides `timeout_s` for the suite argv only (prepare/non-suite keep it)."""
     if not commands or any(not isinstance(a, list) or not a or
                            any(not isinstance(s, str) or not s.strip() for s in a)
                            for a in commands):
@@ -58,16 +80,17 @@ def _run_native_commands(commands, cwd, suite_command=None, evidence_dir=None,
         row = {"command": argv, "exit": None, "timed_out": False,
                "spawn_error": None, "artifacts": paths, "status": "pass"}
         start = time.monotonic()
+        limit = suite_timeout_s if (argv == suite_command and suite_timeout_s) else timeout_s
         with open(paths["stdout"], "w") as stdout, open(paths["stderr"], "w") as stderr:
             try:
                 r = subprocess.run(argv, cwd=cwd, stdout=stdout, stderr=stderr,
-                                   timeout=timeout_s)
+                                   timeout=limit)
                 row["exit"] = r.returncode
                 if r.returncode != 0:
                     row["status"] = "fail"
             except subprocess.TimeoutExpired:
                 row.update(status="HOLD", timed_out=True,
-                           detail="timed out after %ss" % timeout_s)
+                           detail="timed out after %ss" % limit)
             except OSError as e:
                 row.update(status="HOLD", spawn_error=str(e))
         row["duration_s"] = round(time.monotonic() - start, 3)
@@ -77,10 +100,12 @@ def _run_native_commands(commands, cwd, suite_command=None, evidence_dir=None,
             err = f.read()
         row["output"] = (out + err)[-8000:]
         if argv == suite_command:
-            row["test_count"] = _tap_test_count(out)
+            row["test_count"] = _SUITE_COUNTERS[runner](out)
             if row["status"] == "pass" and not row["test_count"]:
                 row.update(status="fail", vacuous=True,
-                           detail="suite requires one authoritative # tests N total with N > 0")
+                           detail="suite requires one authoritative %s with N > 0" % (
+                               "# tests N total" if runner == "tap"
+                               else "'N passed in X.XXs' summary"))
         results.append(row)
     return _command_verdict(results), results
 
@@ -407,7 +432,9 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None, evidence
         if NATIVE_SUITE_COMMAND is None:
             raise ValueError("native verify requires suite")
         status, rows = _run_native_commands(NATIVE_VERIFY_COMMANDS, checkout_cwd,
-                                            NATIVE_SUITE_COMMAND, artifact_dir("unit"))
+                                            NATIVE_SUITE_COMMAND, artifact_dir("unit"),
+                                            runner=SUITE_RUNNER,
+                                            suite_timeout_s=SUITE_TIMEOUT_S)
         evidence["unit"] = {"status": status, "commands": rows}
     else:
         try:
