@@ -77,5 +77,21 @@ class TestSettingsEnvOverrides(unittest.TestCase):
         self.assertEqual(supervisor.SCENARIOS_DIR, settings.SCENARIOS_DIR)
 
 
+class TestNativeConfigBoundary(unittest.TestCase):
+    def test_null_empty_shell_and_missing_suite_rejected(self):
+        import json
+        import subprocess
+        valid_suite = ["node", "--test"]
+        cases = [{key: value} for key in ("verify", "prepare", "suite") for value in (None, [])]
+        cases += [{"verify": [["node", "--test"]]}, {"verify": "node --test"},
+                  {"verify": [[""]]}, {"task_kind": None}, {"merge_mode": None},
+                  {"verify": [valid_suite, valid_suite], "suite": valid_suite}]
+        for cfg in cases:
+            env = dict(os.environ, FACTORY_NATIVE_CONFIG=json.dumps(cfg))
+            r = subprocess.run([sys.executable, "-c", "import settings"],
+                               cwd=os.path.dirname(settings.__file__), env=env,
+                               capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, cfg)
+
 if __name__ == "__main__":
     unittest.main()

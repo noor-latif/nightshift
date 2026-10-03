@@ -19,21 +19,84 @@ import subprocess
 import time
 import urllib.request
 import tempfile
-from settings import DEPLOY_MODE, PROVENANCE_ENV, READY_TIMEOUT_S, SCENARIO_PORT_RANGE
+from settings import (DEPLOY_MODE, NATIVE_PREPARE_COMMANDS, NATIVE_SUITE_COMMAND,
+                      NATIVE_VERIFY_COMMANDS, PROVENANCE_ENV, READY_TIMEOUT_S,
+                      SCENARIO_PORT_RANGE)
 
 
 class Hold(Exception):
     """A check that cannot run. Never a pass."""
 
+def _tap_test_count(output):
+    """One authoritative Node TAP total; missing/duplicate/invalid is unknown."""
+    totals = re.findall(r"^# tests[ \t]+([^\r\n]*)$", output, re.M)
+    if len(totals) != 1 or not re.fullmatch(r"[0-9]+", totals[0].strip()):
+        return None
+    return int(totals[0])
+
+
+def _command_verdict(rows):
+    statuses = {r["status"] for r in rows}
+    return "HOLD" if "HOLD" in statuses else ("pass" if statuses == {"pass"} else "fail")
+
+
+def _run_native_commands(commands, cwd, suite_command=None, evidence_dir=None,
+                         timeout_s=600):
+    """Full stdout/stderr artifacts, bounded report; HOLD dominates failure."""
+    if not commands or any(not isinstance(a, list) or not a or
+                           any(not isinstance(s, str) or not s.strip() for s in a)
+                           for a in commands):
+        raise ValueError("native commands must be nonempty argv arrays")
+    if suite_command is not None and commands.count(suite_command) != 1:
+        raise ValueError("suite must designate exactly one command")
+    if evidence_dir is None:
+        evidence_dir = tempfile.mkdtemp(prefix="factory-verification-")
+    os.makedirs(evidence_dir, exist_ok=True)
+    results = []
+    for index, argv in enumerate(commands):
+        paths = {name: os.path.abspath(os.path.join(evidence_dir, "%d.%s" % (index, name)))
+                 for name in ("stdout", "stderr")}
+        row = {"command": argv, "exit": None, "timed_out": False,
+               "spawn_error": None, "artifacts": paths, "status": "pass"}
+        start = time.monotonic()
+        with open(paths["stdout"], "w") as stdout, open(paths["stderr"], "w") as stderr:
+            try:
+                r = subprocess.run(argv, cwd=cwd, stdout=stdout, stderr=stderr,
+                                   timeout=timeout_s)
+                row["exit"] = r.returncode
+                if r.returncode != 0:
+                    row["status"] = "fail"
+            except subprocess.TimeoutExpired:
+                row.update(status="HOLD", timed_out=True,
+                           detail="timed out after %ss" % timeout_s)
+            except OSError as e:
+                row.update(status="HOLD", spawn_error=str(e))
+        row["duration_s"] = round(time.monotonic() - start, 3)
+        with open(paths["stdout"], errors="replace") as f:
+            out = f.read()
+        with open(paths["stderr"], errors="replace") as f:
+            err = f.read()
+        row["output"] = (out + err)[-8000:]
+        if argv == suite_command:
+            row["test_count"] = _tap_test_count(out)
+            if row["status"] == "pass" and not row["test_count"]:
+                row.update(status="fail", vacuous=True,
+                           detail="suite requires one authoritative # tests N total with N > 0")
+        results.append(row)
+    return _command_verdict(results), results
+
+
+def run_native_preparation(cwd, evidence_dir=None):
+    """Preparation evidence preserves harness HOLD rather than flattening it."""
+    if not NATIVE_PREPARE_COMMANDS:
+        return True, {"status": "skip", "detail": "no prepare commands configured"}
+    verdict, rows = _run_native_commands(NATIVE_PREPARE_COMMANDS, cwd,
+                                         evidence_dir=evidence_dir)
+    return verdict == "pass", {"status": verdict, "commands": rows}
+
 
 def run_unit_tests(cwd):
-    """Oracle 1: the candidate's own suite. Returns (ok, output).
-
-    Repos without a tests/ dir (toy-product) discover *_test.py from the
-    root — the calibration harness's exact invocation. Zero tests discovered
-    is a FAIL, never a vacuous pass (L-004: an oracle that sees nothing is
-    not green).
-    """
+    """Historical Python oracle: returns (ok, bounded output), requires ran > 0."""
     if os.path.isdir(os.path.join(cwd, "tests")):
         cmd = ["python3", "-m", "unittest", "discover", "-s", "tests"]
     else:
@@ -330,13 +393,31 @@ def scenario_paths(scenarios_dir, issue=None):
             if not n.startswith("issue-")
             or (issue is not None and n == "issue-%d.json" % issue)]
 
-def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None):
+def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None, evidence_dir=None):
     """Oracle-first ladder. Green only if every check ran and passed."""
     evidence = {"unit": {}, "scenarios": [], "provenance": {}}
-    ok, out = run_unit_tests(checkout_cwd)
-    evidence["unit"] = {"status": "pass" if ok else "fail", "output": out}
-    if not ok:
-        evidence["verdict"] = "fail"
+    def artifact_dir(phase):
+        return os.path.join(evidence_dir, phase) if evidence_dir else None
+    prep_ok, prep_ev = run_native_preparation(checkout_cwd, artifact_dir("prepare"))
+    if prep_ev.get("status") != "skip":
+        evidence["prepare"] = prep_ev
+    if not prep_ok:
+        evidence["verdict"] = prep_ev["status"]
+        return evidence
+    if NATIVE_VERIFY_COMMANDS is not None:
+        if NATIVE_SUITE_COMMAND is None:
+            raise ValueError("native verify requires suite")
+        status, rows = _run_native_commands(NATIVE_VERIFY_COMMANDS, checkout_cwd,
+                                            NATIVE_SUITE_COMMAND, artifact_dir("unit"))
+        evidence["unit"] = {"status": status, "commands": rows}
+    else:
+        try:
+            ok, out = run_unit_tests(checkout_cwd)
+            evidence["unit"] = {"status": "pass" if ok else "fail", "output": out}
+        except (OSError, subprocess.TimeoutExpired) as e:
+            evidence["unit"] = {"status": "HOLD", "detail": str(e)}
+    if evidence["unit"]["status"] != "pass":
+        evidence["verdict"] = evidence["unit"]["status"]
         return evidence
     for path in scenario_paths(scenarios_dir, issue):
         with open(path) as f:

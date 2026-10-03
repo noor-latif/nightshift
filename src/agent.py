@@ -12,16 +12,20 @@ stream ended without finish_reason / reasoning ate the token budget).
 
 import json
 import os
+import re
+import time
 import http.client
 import urllib.error
 import urllib.request
 
 from settings import (
+    HTTP_TIMEOUT_S,
     MIN_MAX_TOKENS,
     PROVIDER_PINS,
     SURPLUS_API_KEY_ENV,
     SURPLUS_BASE_URL,
     SURPLUS_CHAT_PATH,
+    TRACE_HEADER_ALLOWLIST,
 )
 
 
@@ -45,6 +49,7 @@ def parse_stream(raw):
     """
     content_parts, reasoning_parts = [], []
     finish_reason, usage = None, None
+    metadata = []
     for line in raw.decode("utf-8", errors="replace").splitlines():
         if not line.startswith("data:"):
             continue
@@ -52,6 +57,10 @@ def parse_stream(raw):
         if not payload or payload == "[DONE]":
             continue
         chunk = json.loads(payload)
+        identity = {k: chunk[k] for k in ("id", "model", "provider", "system_fingerprint", "created")
+                    if k in chunk}
+        if identity and identity not in metadata:
+            metadata.append(identity)
         if chunk.get("usage"):
             usage = chunk["usage"]
         for choice in chunk.get("choices", []):
@@ -69,6 +78,7 @@ def parse_stream(raw):
         "reasoning": "".join(reasoning_parts),
         "finish_reason": finish_reason,
         "usage": usage,
+        "response_metadata": metadata,
     }
 
 
@@ -83,6 +93,113 @@ def _raise_for_status_shape(raw):
         return
     if err.get("code") == "no_sellers_for_model" or err.get("type") == "invalid_request_error":
         raise PermanentError(err.get("message", "invalid request"))
+
+
+
+
+_SECRET_MARKERS = ("authorization", "api_key", "api-key", "apikey",
+                   "secret", "password", "cookie", "email")
+
+
+def _sanitize(obj, secrets=()):
+    """Sanitize nested JSON/SSE and embedded credentials, using only call keys."""
+    if isinstance(obj, dict):
+        return {_sanitize(k, secrets): ("[REDACTED]" if any(m in k.lower() for m in _SECRET_MARKERS)
+                    or "token" in k.lower() and isinstance(v, str)
+                    else _sanitize(v, secrets)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v, secrets) for v in obj]
+    if not isinstance(obj, str):
+        return obj
+    try:
+        parsed = json.loads(obj)
+    except (ValueError, TypeError):
+        parsed = None
+    if isinstance(parsed, (dict, list)):
+        return json.dumps(_sanitize(parsed, secrets), ensure_ascii=False)
+    if obj.startswith("data:") or "\ndata:" in obj:
+        obj = "\n".join("data: " + _sanitize(line[5:].strip(), secrets)
+                        if line.startswith("data:") else _sanitize(line, secrets)
+                        for line in obj.splitlines())
+    for secret in secrets:
+        if secret:
+            for representation in (secret, json.dumps(secret)[1:-1]):
+                obj = obj.replace(representation, "[REDACTED]")
+    obj = re.sub(r"(?i)\bbearer\s+[^\s\"'\\,}]+", "Bearer [REDACTED]", obj)
+    obj = re.sub(r'''(?i)\b(?:api[_-]?key|token|secret|password)["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,}]+)''',
+                 "credential=[REDACTED]", obj)
+    return re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[REDACTED]", obj)
+
+
+def _safe_headers(resp):
+    """Response headers reduced to the allowlist; auth never included."""
+    return {k: resp.headers.get(k) for k in TRACE_HEADER_ALLOWLIST
+            if resp.headers.get(k) is not None}
+
+
+def write_trace(trace_dir, call_id, phase, *, payload_obj=None, raw=None,
+                headers=None, error=None, secret_values=(), url=None, **extra):
+    """Append one sanitized actual-call trace event to
+    <trace_dir>/model-calls.jsonl. Actual outbound request/response bytes as
+    sent/received — never reconstructed. A trace-write failure is loud
+    (raises): silently dropping evidence is the failure mode this exists
+    to prevent. Callers without a trace_dir pass None (no-op, historical
+    behavior preserved)."""
+    if not trace_dir:
+        return
+    os.makedirs(trace_dir, exist_ok=True)
+    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "call_id": call_id, "phase": phase,
+           "url": url or chat_url()}
+    if payload_obj is not None:
+        # the actual outbound JSON, sanitized; model/params verbatim
+        row["request"] = payload_obj
+    if raw is not None:
+        body = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else raw
+        row["response_body"] = body
+    if headers:
+        row["response_headers"] = {k: v for k, v in headers.items()
+                                   if k.lower() in TRACE_HEADER_ALLOWLIST}
+    if error:
+        row["error"] = str(error)
+    row.update(extra)
+    with open(os.path.join(trace_dir, "model-calls.jsonl"), "a") as f:
+        json.dump(_sanitize(row, secret_values), f, default=str)
+        f.write("\n")
+
+
+def parse_response(raw):
+    """Nonstream Responses text result; usage/served metadata stay actual."""
+    body = json.loads(raw)
+    status = body.get("status")
+    if status == "incomplete" and (body.get("incomplete_details") or {}).get("reason") == "max_output_tokens":
+        finish = "length"
+    elif status == "completed" and not body.get("error"):
+        finish = "stop"
+    else:
+        raise PermanentError("Responses result not completed: %s" % status)
+    content, reasoning = [], []
+    for item in body.get("output", []):
+        if item.get("type") == "message":
+            for part in item.get("content", []):
+                if part.get("type") == "output_text":
+                    content.append(part["text"])
+                elif part.get("type") == "refusal":
+                    raise PermanentError("Responses refusal")
+        elif item.get("type") == "reasoning":
+            reasoning.extend(p["text"] for p in item.get("summary", []) if p.get("type") == "summary_text")
+        else:
+            raise PermanentError("Responses returned unsupported non-text output")
+    usage = body.get("usage")
+    if usage is not None:
+        usage = dict(usage)
+        if "input_tokens" in usage:
+            usage["prompt_tokens"] = usage["input_tokens"]
+        if "output_tokens" in usage:
+            usage["completion_tokens"] = usage["output_tokens"]
+    metadata = {k: body[k] for k in ("id", "model", "provider", "created_at", "status", "incomplete_details") if k in body}
+    return {"content": "".join(content), "reasoning": "".join(reasoning),
+            "finish_reason": finish, "usage": usage, "response_metadata": [metadata]}
 
 
 def implementer_prompt(issue, criteria, n, _cache={}):
@@ -111,47 +228,100 @@ def implementer_prompt(issue, criteria, n, _cache={}):
     )
 
 
-def reviewer_prompt(diff, criteria, files="", _cache={}):
+def reviewer_prompt(diff, criteria, files="", brief="", _cache={}):
     """Fresh context: diff + criteria + post-apply file view (candidate state).
     Never the implementation reasoning. The file view exists so criteria about
-    code the diff does not touch are checkable instead of fail-closed."""
+    code the diff does not touch are checkable instead of fail-closed. The
+    design brief is the same direction the implementer was given, so a
+    design-compliance criterion is checkable instead of unverifiable."""
     if "reviewer" not in _cache:
         with open(os.path.join(os.path.dirname(__file__), "prompts", "reviewer.txt")) as f:
             _cache["reviewer"] = f.read()
     body = _cache["reviewer"]
-    for k, v in {"{{diff}}": diff, "{{criteria}}": criteria, "{{files}}": files}.items():
+    if brief:
+        body = body.replace("acceptance criteria:\n{{criteria}}",
+                            "design brief the implementation was given:\n{{brief}}\n\n"
+                            "acceptance criteria:\n{{criteria}}")
+    for k, v in {"{{diff}}": diff, "{{criteria}}": criteria, "{{files}}": files,
+                 "{{brief}}": brief}.items():
         body = body.replace(k, v)
     return body
 
 
 def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
-         api_key=None, opener=None,
-         base_url=SURPLUS_BASE_URL):
-    """One chat completion, streaming, with exactly one transient retry."""
+         api_key=None, opener=None, trace_dir=None, call_id="call",
+         base_url=SURPLUS_BASE_URL, api="openai-completions",
+         max_tokens_field="max_tokens"):
+    """Text call with existing retry policy; explicit compatible API route.
+
+    max_tokens_field names the completions field carrying the output cap.
+    The historical literal is "max_tokens"; catalog entries whose compat
+    declares another field (the approved implementer declares
+    "max_completion_tokens") are driven by trusted per-role config. The
+    gateway documents both names as aliases, so this is configurability: the
+    observed empty completion was never established to be caused by the
+    field name (see lap-9001 evidence; the causal claim is retracted).
+
+    trace_dir set → every actual attempt (request payload, response body,
+    allowlisted headers, HTTP errors, transport errors) is appended to
+    <trace_dir>/model-calls.jsonl, sanitized. Requested model/params are
+    recorded verbatim; the RESPONSE model, if the gateway echoes one in
+    the stream, is recorded separately (requested ≠ served — the GLM
+    fallback incident)."""
+    if api not in ("openai-completions", "openai-responses"):
+        raise ValueError("unsupported text API: %s" % api)
+    if not isinstance(model, str) or not model.strip():
+        # A blank role model is an operator configuration error, not a
+        # request: observed twice as a 120s transport timeout because the
+        # gateway had no model to route. Fail before any HTTP call.
+        raise ValueError("model must be a non-empty model id (got %r)" % (model,))
+    if not isinstance(max_tokens_field, str) or not max_tokens_field.strip():
+        raise ValueError("max_tokens_field must be a non-empty field name (got %r)"
+                         % (max_tokens_field,))
+    responses = api == "openai-responses"
+    url = base_url.rstrip("/") + ("/v1/responses" if responses else SURPLUS_CHAT_PATH)
     api_key = api_key or os.environ[SURPLUS_API_KEY_ENV]
     # key used only inside headers; never logged, never printed
     attempt_max = max_tokens
+    trace_secrets = (api_key, os.environ.get(SURPLUS_API_KEY_ENV, ""))
+    def trace(phase, **kw):
+        write_trace(trace_dir, call_id, phase, secret_values=trace_secrets,
+                    url=url, api=api, **kw)
 
     open_fn = opener.open if opener else urllib.request.urlopen
 
     for attempt in (1, 2):
-        payload = json.dumps({
-            "model": model,
-            "messages": messages,
-            "max_tokens": attempt_max,
-            "stream": True,
-            **({"provider": PROVIDER_PINS[model]} if model in PROVIDER_PINS else {}),
-            **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
-        }).encode()
+        if responses:
+            if any(m.get("role") not in ("system", "developer", "user", "assistant")
+                   or not isinstance(m.get("content"), str) for m in messages):
+                raise ValueError("Responses transport supports text messages only")
+            payload_obj = {"model": model, "input": messages, "stream": False,
+                           "store": False, "max_output_tokens": attempt_max,
+                           **({"provider": PROVIDER_PINS[model]} if model in PROVIDER_PINS else {}),
+                           **({"reasoning": {"effort": reasoning_effort}} if reasoning_effort else {})}
+        else:
+            payload_obj = {
+                "model": model, "messages": messages, max_tokens_field: attempt_max,
+                "stream": True,
+                **({"provider": PROVIDER_PINS[model]} if model in PROVIDER_PINS else {}),
+                **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),
+            }
+        payload = json.dumps(payload_obj).encode()
+        trace("request", payload_obj=payload_obj,
+              attempt=attempt, requested_model=model)
         req = urllib.request.Request(
-            chat_url(base_url), payload,
+            url, payload,
             {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
         )
         try:
-            with open_fn(req, timeout=120) as resp:
+            with open_fn(req, timeout=HTTP_TIMEOUT_S) as resp:
                 raw = resp.read()
+                hdrs = _safe_headers(resp) if trace_dir else {}
         except urllib.error.HTTPError as e:
             body = e.read()
+            trace("http-error", payload_obj=payload_obj,
+                  raw=body, headers=_safe_headers(e) if trace_dir else {}, attempt=attempt,
+                  status=e.code, error="HTTP %d" % e.code)
             if e.code < 500:
                 _raise_for_status_shape(body)  # may raise PermanentError
                 raise TransientError("HTTP %d" % e.code)
@@ -160,15 +330,25 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
             continue
         except (urllib.error.URLError, TimeoutError, OSError,
                 http.client.IncompleteRead) as e:
+            trace("transport-error", payload_obj=payload_obj, attempt=attempt,
+                  raw=e.partial if isinstance(e, http.client.IncompleteRead) else None,
+                  error="%s: %s" % (type(e).__name__, e))
             if attempt == 2:
                 raise TransientError("connection error after retry: %s" % e)
             continue
         try:
-            result = parse_stream(raw)
-        except TransientError:
+            result = parse_response(raw) if responses else parse_stream(raw)
+        except (TransientError, PermanentError, ValueError, TypeError, KeyError, AttributeError) as e:
+            trace("response-error" if responses else "stream-error", raw=raw, headers=hdrs, attempt=attempt,
+                  error="%s: %s" % (type(e).__name__, e))
+            if not isinstance(e, TransientError):
+                raise  # malformed/unsupported responses retain terminal behavior
             if attempt == 2:
                 raise
             continue
+        trace("response", raw=raw, headers=hdrs, attempt=attempt,
+              requested_model=model, response_metadata=result["response_metadata"],
+              finish_reason=result["finish_reason"], usage=result["usage"])
         if result["finish_reason"] == "length":
             # A length finish is incomplete whether or not it contains text.
             # Retry at a larger cap, and never let a second capped completion

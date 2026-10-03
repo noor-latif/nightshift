@@ -41,13 +41,22 @@ from settings import (
     GITHUB_REPO,
     HEARTBEAT_PATH,
     IMPLEMENTER_MAX_TOKENS,
+    IMPLEMENTER_MAX_TOKENS_FIELD,
+    IMPLEMENTER_API,
     IMPLEMENTER_MODEL,
     IMPLEMENTER_REASONING_EFFORT,
     LAP_WALLCLOCK_LIMIT_S,
+    MERGE_MODE,
+    NEW_FILES,
     SCENARIOS_DIR,
+    TASK_FILE,
     PRODUCT_REPO,
     REVIEWER_MAX_TOKENS,
+    REVIEWER_MAX_TOKENS_FIELD,
+    REVIEWER_API,
+    REVIEWER_REASONING_EFFORT,
     REVIEWER_MODEL,
+    TASK_KIND,
 )
 
 RESULT_PATH = os.path.join("state", "lap-result.json")
@@ -89,6 +98,12 @@ def _clear_implementer_feedback(issue):
 
 def _implementer_prompt(data, criteria, issue, files):
     prompt = agent.implementer_prompt(data, criteria, issue)
+    if NEW_FILES:
+        prompt += ("\n\nNew files: these paths do not exist yet and are the ONLY "
+                   "paths you may create: %s. Create one with "
+                   '{"file": "<path>", "find": "", "replace": "<entire file '
+                   'content>", "create": true}. Any other path is rejected.'
+                   % ", ".join(NEW_FILES))
     feedback = _load_implementer_feedback(issue)
     if feedback:
         prompt += ("\n\nFeedback from the previous implementer attempt. "
@@ -157,6 +172,22 @@ def _worktree_add(repo, path, branch, _retry=True):
 
 
 def issue_data(issue):
+    """Issue text from the trusted local task file when configured, else gh.
+
+    The local path exists for operator-run laps whose task is not a GitHub
+    issue (a docs-only product with no tracker); it is never read from the
+    candidate checkout. Shape is validated loud — a malformed task file must
+    not reach a paid call.
+    """
+    if TASK_FILE:
+        with open(TASK_FILE) as f:
+            data = json.load(f)
+        if (not isinstance(data, dict)
+                or not isinstance(data.get("title"), str) or not data["title"].strip()
+                or not isinstance(data.get("body"), str) or not data["body"].strip()):
+            raise ValueError("task file %s must be an object with non-empty "
+                             "string title and body" % TASK_FILE)
+        return {"title": data["title"], "body": data["body"]}
     return json.loads(_gh(["issue", "view", str(issue), "--json", "title,body"]))
 
 
@@ -234,6 +265,17 @@ def criteria_from(body):
     m = re.search(r"Acceptance criteria:?\s*\n(.+)", body, re.S | re.I)
     return m.group(1).strip() if m else body
 
+def design_brief_from(body):
+    """The creative-direction section of a task body, for the reviewer.
+
+    The implementer is told the direction; without it the reviewer can only
+    fail a design-compliance criterion as unverifiable (observed on the
+    Körmotorn trial). Returns "" when the task has no such section.
+    """
+    m = re.search(r"^#{1,6}\s*Creative direction[^\n]*\n(.+?)(?=^#{1,6}\s|\Z)",
+                  body, re.S | re.M | re.I)
+    return m.group(1).strip() if m else ""
+
 
 def extract_mutations(text, allowed_files=None):
     """Mutation-parse gate (BIGGEST_ISSUE_ANALYSIS §4): strict JSON parse +
@@ -271,16 +313,36 @@ def extract_mutations(text, allowed_files=None):
 
 
 def _mutation_shape_error(data, allowed_files):
-    """Per-mutation shape check: dict, exactly string file/find/replace."""
+    """Per-mutation shape check: dict, exactly string file/find/replace.
+
+    A create mutation ({"file","create":true,"replace":<whole content>}) is
+    valid only for an allowlisted new path that is not already in the
+    provided checkout: find must be empty, and the file must not exist.
+    """
     for i, m in enumerate(data):
         if not isinstance(m, dict):
             return "mutation-parse: mutation %d is not a JSON object" % i
-        missing = [k for k in ("file", "find", "replace") if k not in m]
+        create = m.get("create")
+        if create is not None and not isinstance(create, bool):
+            return "mutation-parse: mutation %d field 'create' must be a boolean" % i
+        keys = ("file", "find", "replace") if not create else ("file", "replace")
+        missing = [k for k in keys if k not in m]
         if missing:
             return "mutation-parse: mutation %d missing keys %s" % (i, missing)
-        for k in ("file", "find", "replace"):
+        for k in keys:
             if not isinstance(m[k], str):
                 return "mutation-parse: mutation %d field %r must be a string" % (i, k)
+        if create:
+            if m["file"] not in NEW_FILES:
+                return ("mutation-parse: mutation %d creates %r which is not in "
+                        "FACTORY_NEW_FILES" % (i, m["file"]))
+            if m.get("find", ""):
+                return ("mutation-parse: mutation %d create must carry an empty "
+                        "find" % i)
+            if allowed_files is not None and m["file"] in allowed_files:
+                return ("mutation-parse: mutation %d creates %r but it already "
+                        "exists in the provided checkout" % (i, m["file"]))
+            continue
         if not m["find"]:
             return "mutation-parse: mutation %d has an empty find anchor" % i
         if allowed_files is not None and m["file"] not in allowed_files:
@@ -373,6 +435,27 @@ def _anchor_occurrence_diagnosis(needle, hay, count):
             (count, positions, lines))
 
 
+def _create_path_error(name, worktree):
+    """Validate a create target. Returns an error string, or None.
+
+    Lexical '..' rejection alone is not enough: a symlinked parent
+    directory can redirect the write outside the checkout, so the real
+    path of the parent is resolved and required to stay inside the real
+    worktree root.
+    """
+    if name not in NEW_FILES:
+        return "not in FACTORY_NEW_FILES"
+    if (os.path.isabs(name) or "\\" in name
+            or any(part in ("", ".", "..") for part in name.split("/"))):
+        return "must be a plain relative path"
+    root = os.path.realpath(worktree)
+    parent = os.path.realpath(os.path.join(worktree, os.path.dirname(name)))
+    if parent != root and not parent.startswith(root + os.sep):
+        return "parent directory resolves outside the checkout"
+    if os.path.lexists(os.path.join(worktree, name)):
+        return "file already exists"
+    return None
+
 def apply_mutations(mutations, worktree):
 
     """Mutation-apply gate (§4): each anchor must occur exactly once
@@ -387,8 +470,24 @@ def apply_mutations(mutations, worktree):
     the last failure (L-014's lesson carried over to this contract).
     """
     contents, results = {}, []
+    creates = set()
     for i, m in enumerate(mutations):
         name = m["file"]
+        if m.get("create"):
+            # Creation is the one write that has no existing bytes to anchor
+            # on, so the path itself is the trust boundary: allowlisted,
+            # plain relative, real parent inside the checkout, and absent
+            # (the write below is O_EXCL, so a race cannot overwrite).
+            err = _create_path_error(name, worktree)
+            if err or name in creates:
+                err = err or "duplicate create of %r in one mutation set" % name
+                results.append({"index": i, "file": name, "create": True,
+                                "applied": False, "error": err})
+                return False, ("mutation-apply: %s: %s" % (name, err)), results
+            contents[name] = m["replace"]
+            creates.add(name)
+            results.append({"index": i, "file": name, "create": True, "applied": True})
+            continue
         if name not in contents:
             try:
                 with open(os.path.join(worktree, name)) as f:
@@ -422,7 +521,18 @@ def apply_mutations(mutations, worktree):
         b = hay_idx[end - 1] + 1
         contents[name] = text[:a] + m["replace"] + text[b:]
         row["applied"] = True
+    for name in sorted(creates):
+        path = os.path.join(worktree, name)
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except OSError as e:
+            return False, ("mutation-apply: %s: cannot create file (%s)"
+                           % (name, e)), results
+        with os.fdopen(fd, "w") as f:
+            f.write(contents[name])
     for name, text in contents.items():
+        if name in creates:
+            continue
         with open(os.path.join(worktree, name), "w") as f:
             f.write(text)
     # post-condition: the mutated file set must appear in git status
@@ -501,7 +611,8 @@ class Lap:
 
     def set_result(self, outcome, error=None, gate=None, observations=None):
         os.makedirs(os.path.dirname(RESULT_PATH) or ".", exist_ok=True)
-        row = {"issue": self.issue, "outcome": outcome, "run_id": self.run_id}
+        row = {"issue": self.issue, "outcome": outcome, "run_id": self.run_id,
+               "evidence_dir": os.path.abspath(self.evdir)}
         if gate:
             row["gate"] = gate
         if error:
@@ -517,7 +628,7 @@ class Lap:
 def finish(lap, outcome, gate=None, error=None, caught=None):
     """Terminal lap state: verdict evidence + result file for the supervisor."""
     observations = getattr(lap, "observations", [])
-    verdict = {"verdict": "pass" if outcome in ("success", "success-close-failed") else "fail", "outcome": outcome}
+    verdict = {"verdict": "pass" if outcome in ("success", "success-close-failed", "awaiting-review") else "fail", "outcome": outcome}
     if gate:
         verdict["gate"] = gate
     if observations:
@@ -548,13 +659,29 @@ def run(issue):
         data = issue_data(issue)
         criteria = criteria_from(data["body"])
         lap.event("claimed", title=data["title"])
+        if TASK_KIND == "enhancement":
+            baseline = verify.verify_candidate(
+                worktree, os.path.join(lap.evdir, "baseline.pid"), SCENARIOS_DIR,
+                evidence_dir=os.path.join(lap.evdir, "baseline-commands"))
+            lap._dump("baseline.json", baseline)
+            lap.event("baseline-check", verdict=baseline["verdict"])
+            if baseline["verdict"] != "pass":
+                return finish(lap, "failure", gate="baseline", error=baseline)
+            if _git(["diff", "--name-only", "HEAD"], worktree):
+                return finish(lap, "failure", gate="baseline-source",
+                              error="baseline verification changed tracked sources")
+            lap.check_clock()
 
         files = checkout_files(worktree)
         prompt = _implementer_prompt(data, criteria, issue, files)
 
         r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
                        max_tokens=IMPLEMENTER_MAX_TOKENS,
-                       reasoning_effort=IMPLEMENTER_REASONING_EFFORT)
+                       api=IMPLEMENTER_API,
+                       reasoning_effort=IMPLEMENTER_REASONING_EFFORT,
+                       max_tokens_field=IMPLEMENTER_MAX_TOKENS_FIELD,
+                       trace_dir=os.path.join(lap.evdir, "traces"),
+                       call_id="%s-implementer" % lap.run_id)
         view_observation = prompt_view_discrepancy(files, r.get("usage"))
         if view_observation:
             lap.observations.append(view_observation)
@@ -600,8 +727,13 @@ def run(issue):
 
         rev = agent.chat([{"role": "user", "content":
                           agent.reviewer_prompt(branch_diff, criteria,
-                                                files="\n".join(checkout_files(worktree)))}],
-                         REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS)
+                                                files="\n".join(checkout_files(worktree)),
+                                                brief=design_brief_from(data["body"]))}],
+                         REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS,
+                         api=REVIEWER_API, reasoning_effort=REVIEWER_REASONING_EFFORT,
+                         max_tokens_field=REVIEWER_MAX_TOKENS_FIELD,
+                         trace_dir=os.path.join(lap.evdir, "traces"),
+                         call_id="%s-reviewer" % lap.run_id)
         lap.add_cost(rev["usage"], "reviewer")
         with open(os.path.join(lap.evdir, "review.txt"), "w") as f:
             f.write(rev["content"])
@@ -619,13 +751,43 @@ def run(issue):
         lap.event("review-accept")
         lap.check_clock()
         pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
-        evidence = verify.verify_candidate(worktree, pid_file, SCENARIOS_DIR, issue=issue)
+        evidence = verify.verify_candidate(
+            worktree, pid_file, SCENARIOS_DIR, issue=issue,
+            evidence_dir=os.path.join(lap.evdir, "verify-commands"))
         lap._dump("verify.json", evidence)
         if evidence["verdict"] != "pass":
             return finish(lap, "failure", gate="verify", error=evidence)
         lap.event("verify-green")
         lap.check_clock()
-
+        missing_new = [n for n in NEW_FILES
+                       if not os.path.isfile(os.path.join(worktree, n))]
+        if missing_new:
+            return finish(lap, "failure", gate="new-files",
+                          error="required new files absent after verification: %s"
+                                % ", ".join(missing_new),
+                          caught="lap promised new files but produced %s" % missing_new)
+        if _git(["diff", "--name-only", "HEAD"], worktree):
+            return finish(lap, "failure", gate="verify-source",
+                          error="verification changed tracked sources after review/commit")
+        # A local retained ref survives worktree cleanup and future agent retries.
+        # No push/PR/merge is implied by awaiting-review.
+        if MERGE_MODE == "review":
+            repo = os.path.abspath(os.path.expanduser(PRODUCT_REPO))
+            commit = _git(["rev-parse", "HEAD"], worktree)
+            ref = "refs/heads/review/%s" % lap.run_id
+            _git(["update-ref", ref, commit, "0" * 40], repo)
+            snapshot = {"merged": False, "pushed": False, "pr": None,
+                        "reason": "local verified snapshot awaiting owner review",
+                        "repository": repo, "ref": ref, "commit": commit,
+                        "tree": _git(["rev-parse", "HEAD^{tree}"], worktree),
+                        "source_paths": _git(["diff", "--name-only", "origin/main", "HEAD"], worktree).splitlines(),
+                        "diff": os.path.abspath(os.path.join(lap.evdir, "applied.diff")),
+                        "inspect_argv": ["git", "-C", repo, "show", commit],
+                        "checkout_argv": ["git", "-C", repo, "worktree", "add", "--detach",
+                                          "<new-owner-selected-path>", commit]}
+            lap._dump("merge.json", snapshot)
+            lap.event("review-stop", task_kind=TASK_KIND, ref=ref, commit=commit)
+            return finish(lap, "awaiting-review")
         # agent/issue-<n> branches are factory-owned; a crashed lap after the
         # push leaves the remote branch ahead, and a retried lap rebuilds its
         # local branch from origin/main — plain push is then rejected forever.

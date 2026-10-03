@@ -15,12 +15,31 @@ CODE_PATHS = [p.strip() for p in os.environ.get("CODE_PATHS", "*.py").split(",")
 SURPLUS_BASE_URL = "https://api.surplusintelligence.ai"
 SURPLUS_CHAT_PATH = "/v1/chat/completions"
 SURPLUS_API_KEY_ENV = "SURPLUS_INTELLIGENCE_API_KEY"  # key never hardcoded, never printed
+# Per-request socket timeout for the paid call. 120 was the historical
+# literal; a long high-effort generation on a large prompt legitimately
+# exceeds it (observed: 200 + SSE headers, then empty body at ~104s and a
+# read timeout at 120s on the same request shape). Operator-overridable
+# from the launch env; the default is unchanged.
+HTTP_TIMEOUT_S = int(os.environ.get("FACTORY_HTTP_TIMEOUT_S", "120"))
 MIN_MAX_TOKENS = 512  # reasoning models eat budget; below this content can come back null
-IMPLEMENTER_MODEL = "gpt-6-luna"
-IMPLEMENTER_MAX_TOKENS = 16384  # luna: 10,118 completion tokens observed on a real prompt
-IMPLEMENTER_REASONING_EFFORT = "high"  # effort=max returns empty content; high is mandatory (luna-qualify)
-REVIEWER_MODEL = "glm-5.3-flash"
+# Some catalog entries declare a different completions field for the output
+# cap (the Surplus catalog records maxTokensField "max_completion_tokens" for
+# the approved implementer). The gateway documents max_tokens and
+# max_completion_tokens as aliases, so this is trusted per-role
+# configurability, not a claimed root cause of an empty completion. The
+# default keeps the historical wire shape for every other model.
+IMPLEMENTER_MAX_TOKENS_FIELD = os.environ.get("IMPLEMENTER_MAX_TOKENS_FIELD", "max_tokens")
+REVIEWER_MAX_TOKENS_FIELD = os.environ.get("REVIEWER_MAX_TOKENS_FIELD", "max_tokens")
+IMPLEMENTER_MODEL = os.environ.get("IMPLEMENTER_MODEL", "gpt-6-luna")
+IMPLEMENTER_MAX_TOKENS = int(os.environ.get("IMPLEMENTER_MAX_TOKENS", "16384"))  # luna: 10,118 completion tokens observed on a real prompt; a full three-file page exceeded 16384 (observed), so the cap is operator-overridable like the other knobs
+IMPLEMENTER_REASONING_EFFORT = os.environ.get("IMPLEMENTER_REASONING_EFFORT", "high")  # effort=max returns empty content; high is mandatory (luna-qualify)
+REVIEWER_MODEL = os.environ.get("REVIEWER_MODEL", "glm-5.3-flash")
 REVIEWER_MAX_TOKENS = int(os.environ.get("REVIEWER_MAX_TOKENS", "8192"))
+IMPLEMENTER_API = os.environ.get("IMPLEMENTER_API", "openai-completions")
+REVIEWER_API = os.environ.get("REVIEWER_API", "openai-completions")
+REVIEWER_REASONING_EFFORT = os.environ.get("REVIEWER_REASONING_EFFORT")
+if any(api not in ("openai-completions", "openai-responses") for api in (IMPLEMENTER_API, REVIEWER_API)):
+    raise ValueError("role API must be openai-completions|openai-responses")
 RETRY_BUDGET = 2
 MAX_CONCURRENT_LAPS = 1
 # Public-subscription leak fix: the old hardcoded topic is public on origin
@@ -31,7 +50,7 @@ NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 NTFY_URL = ("https://ntfy.sh/" + NTFY_TOPIC) if NTFY_TOPIC else ""
 LAP_WALLCLOCK_LIMIT_S = 10800
 SESSION_WALLCLOCK_LIMIT_S = 14400  # session backstop ≥ per-lap: luna lap ≈ 3×16min + review/verify
-COST_CEILING_USD = 0.01  # enforced at lap level (G7): add_cost raises past this; run() → finish(gate="cost")
+COST_CEILING_USD = float(os.environ.get("COST_CEILING_USD", "0.01"))  # enforced at lap level (G7): add_cost raises past this; run() → finish(gate="cost")
 HEARTBEAT_PATH = "state/heartbeat"  # relative to the supervisor cwd
 HEARTBEAT_TTL_S = 120  # ponytail: fixed TTL; tune on nixlab once real lap cadence is known
 CLAIMS_DIR = "claims"
@@ -46,3 +65,63 @@ SCENARIOS_DIR = os.environ.get(
     os.path.join(os.path.dirname(__file__), "..", "scenarios"))  # deployment-curated dir (self-run: issue-1..6 only)
 PROVIDER_PINS = {"deepseek-v4.1-flash": "openrouter"}  # trusted provider; untrusted quant resellers leak DSML markup (see L-005). 404 no_sellers_for_model = fail loud, correct.
 PROVENANCE_ENV = "FACTORY_RUNTIME_CANDIDATE"  # must be unset; leak = refuse
+# --- prerequisites (Götalands Trafikskola frontend slice, owner-approved 2026-10-02) ---
+# Trusted env JSON: verify/prepare are lists of argv commands; suite is one
+# designated verify argv. Missing commands use the historical Python gate;
+# explicit null/empty values are invalid. Native verify requires a suite
+# whose authoritative Node TAP '# tests N' total proves non-vacuity.
+# trusted from the LAUNCH ENV, never a file the candidate can edit.
+import json as _json
+
+_env_cfg = os.environ.get("FACTORY_NATIVE_CONFIG", "")
+_cfg = _json.loads(_env_cfg) if _env_cfg else {}
+if not isinstance(_cfg, dict):
+    raise ValueError("FACTORY_NATIVE_CONFIG must be a JSON object")
+# Native commands: each value is a LIST of commands, each command a flat
+# nonempty argv array of nonempty strings, no shell. Explicit empty list
+# or null = a config error, never a silent pass; MISSING key = unset
+# (historical Python default).
+def _one_argv(v):
+    return (isinstance(v, list) and v
+            and all(isinstance(a, str) and a.strip() for a in v))
+
+def _argv(v, what):
+    if not _one_argv(v):
+        raise ValueError("FACTORY_NATIVE_CONFIG %s must be a nonempty argv array of nonempty strings" % what)
+    return v
+
+
+def _command_list(v):
+    if not (isinstance(v, list) and v and all(_one_argv(c) for c in v)):
+        raise ValueError("FACTORY_NATIVE_CONFIG commands must be nonempty argv arrays of nonempty strings")
+    return v
+
+
+NATIVE_VERIFY_COMMANDS = _command_list(_cfg["verify"]) if "verify" in _cfg else None
+NATIVE_SUITE_COMMAND = _argv(_cfg["suite"], "suite") if "suite" in _cfg else None
+NATIVE_PREPARE_COMMANDS = _command_list(_cfg["prepare"]) if "prepare" in _cfg else None
+if NATIVE_VERIFY_COMMANDS is not None and NATIVE_SUITE_COMMAND is None:
+    raise ValueError("FACTORY_NATIVE_CONFIG native verify requires suite")
+if NATIVE_SUITE_COMMAND is not None and (NATIVE_VERIFY_COMMANDS or []).count(NATIVE_SUITE_COMMAND) != 1:
+    raise ValueError("FACTORY_NATIVE_CONFIG suite must designate exactly one verify command")
+TASK_KIND = _cfg.get("task_kind", "bug")
+MERGE_MODE = _cfg.get("merge_mode", "auto")
+if TASK_KIND not in ("bug", "enhancement") or MERGE_MODE not in ("auto", "review"):
+    raise ValueError("FACTORY_NATIVE_CONFIG: task_kind must be bug|enhancement, merge_mode must be auto|review")
+TRACE_HEADER_ALLOWLIST = ["content-type", "request-id", "x-request-id", "x-ratelimit-remaining-requests",
+                          "x-ratelimit-reset-requests", "retry-after"]
+# --- local trusted task input + explicit new-file creation (Körmotorn local trial) ---
+# The task file is an operator-provided, read-only artifact OUTSIDE the
+# candidate checkout; when set, the lap reads the issue text from it instead
+# of GitHub. Empty (default) preserves the historical gh path exactly.
+TASK_FILE = os.environ.get("FACTORY_TASK_FILE", "")
+if TASK_FILE and not os.path.isabs(TASK_FILE):
+    raise ValueError("FACTORY_TASK_FILE must be an absolute path")
+# Creation is opt-in and allowlisted from the launch env, never a candidate
+# file: only these exact relative paths may be created. Empty (default) =
+# no creation capability, so the historical edit-only contract is unchanged.
+NEW_FILES = [p.strip() for p in os.environ.get("FACTORY_NEW_FILES", "").split(",") if p.strip()]
+for _p in NEW_FILES:
+    if (os.path.isabs(_p) or _p.startswith("~") or "\\" in _p
+            or any(s in ("", ".", "..") for s in _p.split("/"))):
+        raise ValueError("FACTORY_NEW_FILES entries must be plain relative paths: %r" % _p)

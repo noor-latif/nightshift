@@ -308,8 +308,15 @@ supervisor.save_state = lambda s, p: None
 supervisor.LAP_WALLCLOCK_LIMIT_S = 10**9
 supervisor.main()
 """ % (os.path.join(os.path.dirname(__file__), "..", "src"), events))
+            # main() uses the REAL notify(), and NTFY_URL is derived from the
+            # launch env: without this the BLOCKED/DRAIN paths POST to the
+            # operator's public topic every time the suite runs (observed: 2
+            # real notifications per suite run). Dropping NTFY_TOPIC disables
+            # the notification transport for this child; it is not a general
+            # network restriction.
+            env = {k: v for k, v in os.environ.items() if k != "NTFY_TOPIC"}
             r = subprocess.run([sys.executable, f.name], capture_output=True,
-                                text=True, cwd=cwd)
+                                text=True, cwd=cwd, env=env)
             os.unlink(f.name)
             return r.returncode
 

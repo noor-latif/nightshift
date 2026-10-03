@@ -22,6 +22,7 @@ from settings import (
     SESSION_WALLCLOCK_LIMIT_S,
     SCENARIOS_DIR,
     STATE_DIR,
+    TASK_KIND,
 )
 
 RESULT_PATH = os.path.join(STATE_DIR, "lap-result.json")
@@ -187,8 +188,11 @@ def dispatch(state, now, deps):
         return "idle"
     # L-013: never spend a lap on an already-satisfied issue. Re-prove the
     # repro is RED on fresh main first; GREEN → reconcile as merged + skip.
+    # Enhancement laps are the sanctioned exception (owner-approved contract):
+    # a green baseline IS the expected starting state — RED-first stays
+    # mandatory for bugs (default), no fabricated RED for visual work.
     recheck = deps.get("red_recheck")
-    if recheck:
+    if recheck and TASK_KIND == "bug":
         verdict, detail = recheck(claim["issue"])
         runtime_log("red-recheck", issue=claim["issue"], verdict=verdict, detail=detail)
         if verdict == "pass":
@@ -231,7 +235,7 @@ def handle_lap_end(state, outcome, now, deps):
     runtime_log("lap-check", issue=issue, observed=observed)
     if observed:
         runtime_log("intervention", issue=issue, detail=observed)
-    if disposition in ("retry", "merged", "parked", "timeout-park"):
+    if disposition in ("retry", "merged", "parked", "timeout-park", "awaiting-review"):
         # retry: release so the retry re-acquires the same issue.
         # merged/parked/timeout-park are TERMINAL: the claim file is removed
         # here too — launch-4/launch-2 finding: leaving it made reconcile
@@ -247,6 +251,8 @@ def handle_lap_end(state, outcome, now, deps):
         notify_fn("lap issue %d: GREEN" % issue)
     elif outcome == "success-close-failed":
         notify_fn("lap issue %d: GREEN (issue close failed)" % issue)
+    elif outcome == "awaiting-review":
+        notify_fn("lap issue %d: gates green, awaiting owner review" % issue)
     else:
         notify_fn("lap issue %d: %s (%s)" % (issue, outcome.upper(), disposition))
     state["lap"] = None

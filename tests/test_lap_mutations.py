@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -317,6 +318,130 @@ class TestCheckoutFilesCodePaths(unittest.TestCase):
         got = lap.checkout_files(self.dir)
         self.assertEqual(len(got), 1)
         self.assertNotIn("secret", "".join(got))
+
+class TestCreateMutations(unittest.TestCase):
+    """Explicit new-file creation: opt-in, allowlisted, never overwriting.
+
+    The historical edit-only contract is unchanged when FACTORY_NEW_FILES is
+    empty (the default); these cover the one new write shape.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        git(self.dir, "init", "-q")
+        with open(os.path.join(self.dir, "app.py"), "w") as f:
+            f.write("x = 1\n")
+        git(self.dir, "add", "-A")
+        git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init")
+        self._p = unittest.mock.patch.object(lap, "NEW_FILES", ["index.html"])
+        self._p.start()
+        self.addCleanup(self._p.stop)
+
+    def create(self, file, content):
+        return {"file": file, "find": "", "replace": content, "create": True}
+
+    def test_create_writes_allowlisted_new_file(self):
+        ok, detail, results = lap.apply_mutations(
+            [self.create("index.html", "<h1>hi</h1>\n")], self.dir)
+        self.assertTrue(ok, detail)
+        self.assertEqual(open(os.path.join(self.dir, "index.html")).read(), "<h1>hi</h1>\n")
+        self.assertIn("index.html", lap.applied_files(self.dir))
+        self.assertTrue(results[0]["create"])
+
+    def test_create_rejected_when_path_not_allowlisted(self):
+        m, err = lap.extract_mutations(json.dumps([self.create("evil.html", "x")]),
+                                       allowed_files=set())
+        self.assertIsNone(m)
+        self.assertIn("FACTORY_NEW_FILES", err)
+
+    def test_create_rejected_when_file_already_in_checkout(self):
+        m, err = lap.extract_mutations(json.dumps([self.create("index.html", "x")]),
+                                       allowed_files={"index.html"})
+        self.assertIsNone(m)
+        self.assertIn("already", err)
+
+    def test_create_rejects_non_boolean_flag_and_non_string_content(self):
+        bad = [{"file": "index.html", "find": "", "replace": "x", "create": "yes"},
+               {"file": "index.html", "find": "", "replace": 3, "create": True},
+               {"file": "index.html", "find": "anchor", "replace": "x", "create": True}]
+        for payload in bad:
+            m, err = lap.extract_mutations(json.dumps([payload]), allowed_files=set())
+            self.assertIsNone(m, payload)
+            self.assertIn("mutation-parse", err)
+
+    def test_create_path_validator_rejects_escape_shapes(self):
+        for bad in ("../index.html", "/tmp/index.html", "sub/../index.html",
+                    "a\\b.html", "./index.html"):
+            with unittest.mock.patch.object(lap, "NEW_FILES", [bad]):
+                self.assertIsNotNone(lap._create_path_error(bad, self.dir), bad)
+
+    def test_create_rejects_symlinked_parent_escaping_checkout(self):
+        outside = tempfile.mkdtemp()
+        os.symlink(outside, os.path.join(self.dir, "link"))
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["link/evil.html"]):
+            err = lap._create_path_error("link/evil.html", self.dir)
+        self.assertIn("outside the checkout", err)
+        self.assertEqual(os.listdir(outside), [])
+
+    def test_duplicate_create_of_one_path_rejected(self):
+        ok, detail, _ = lap.apply_mutations(
+            [self.create("index.html", "a"), self.create("index.html", "b")], self.dir)
+        self.assertFalse(ok)
+        self.assertIn("duplicate", detail)
+
+    def test_create_never_overwrites_an_existing_file(self):
+        # simulate the target appearing between validation and write: the
+        # exclusive open must refuse rather than clobber
+        with open(os.path.join(self.dir, "index.html"), "w") as f:
+            f.write("keep me\n")
+        with unittest.mock.patch.object(lap, "_create_path_error", return_value=None):
+            ok, detail, _ = lap.apply_mutations(
+                [self.create("index.html", "new")], self.dir)
+        self.assertFalse(ok)
+        self.assertIn("cannot create", detail)
+        self.assertEqual(open(os.path.join(self.dir, "index.html")).read(), "keep me\n")
+
+    def test_edit_and_create_combine_in_one_set(self):
+        ok, detail, _ = lap.apply_mutations(
+            [mut("app.py", "x = 1", "x = 2"), self.create("index.html", "<p>ok</p>")],
+            self.dir)
+        self.assertTrue(ok, detail)
+        self.assertEqual(open(os.path.join(self.dir, "app.py")).read(), "x = 2\n")
+        self.assertEqual(open(os.path.join(self.dir, "index.html")).read(), "<p>ok</p>")
+
+class TestLocalTaskFile(unittest.TestCase):
+    """A trusted operator task file replaces gh for laps whose task is not a
+    GitHub issue; malformed input must never reach a paid call."""
+
+    def setUp(self):
+        self.path = os.path.join(tempfile.mkdtemp(), "task.json")
+
+    def test_reads_local_task_instead_of_gh(self):
+        with open(self.path, "w") as f:
+            json.dump({"title": "Local task", "body": "Acceptance criteria:\n- one"}, f)
+        def boom(*_a, **_k):
+            raise AssertionError("gh must not be called when a task file is set")
+        with unittest.mock.patch.object(lap, "TASK_FILE", self.path), \
+             unittest.mock.patch.object(lap, "_gh", boom):
+            data = lap.issue_data(9001)
+        self.assertEqual(data, {"title": "Local task",
+                                "body": "Acceptance criteria:\n- one"})
+
+    def test_malformed_task_file_fails_loud(self):
+        for payload in ({"title": "t"}, {"body": "b"}, {"title": "", "body": "b"},
+                        {"title": "t", "body": "   "}, {"title": 1, "body": "b"},
+                        [1, 2], "text"):
+            with open(self.path, "w") as f:
+                json.dump(payload, f)
+            with unittest.mock.patch.object(lap, "TASK_FILE", self.path):
+                with self.assertRaises(ValueError):
+                    lap.issue_data(9001)
+
+    def test_gh_path_unchanged_when_no_task_file(self):
+        with unittest.mock.patch.object(lap, "TASK_FILE", ""), \
+             unittest.mock.patch.object(lap, "_gh",
+                                        lambda _args: json.dumps({"title": "T", "body": "B"})):
+            self.assertEqual(lap.issue_data(7), {"title": "T", "body": "B"})
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,10 +64,12 @@ class FakeLapEnv:
                                       lambda issue, repo, wt, ev: {"merged": True, "pr": 1,
                                                                   "merge_sha": "abc"}),
             unittest.mock.patch.object(lap.verify, "verify_candidate",
-                                      lambda cwd, pid, sdir, issue=None: {"verdict": "pass"}),
+                                      lambda cwd, pid, sdir, issue=None, evidence_dir=None: {"verdict": "pass"}),
         ]
 
-    def fake_chat(self, msgs, model, max_tokens=None, reasoning_effort=None):
+    def fake_chat(self, msgs, model, max_tokens=None, reasoning_effort=None,
+                  trace_dir=None, call_id="call", api="openai-completions",
+                  max_tokens_field="max_tokens"):
         if model == lap.IMPLEMENTER_MODEL:
             content = json.dumps([{"file": "app.py", "find": "x = 1", "replace": "x = 2"}])
         else:
@@ -155,7 +157,7 @@ class TestScenariosDirWiring(unittest.TestCase):
             with unittest.mock.patch.object(lap, "SCENARIOS_DIR", curated):
                 seen = {}
 
-                def recorder(cwd, pid_file, scenarios_dir, issue=None):
+                def recorder(cwd, pid_file, scenarios_dir, issue=None, evidence_dir=None):
                     seen["dir"] = scenarios_dir
                     return {"verdict": "pass"}
 
@@ -172,7 +174,7 @@ class TestScenariosDirWiring(unittest.TestCase):
         with FakeLapEnv("none"):
             seen = {}
 
-            def recorder(cwd, pid_file, scenarios_dir, issue=None):
+            def recorder(cwd, pid_file, scenarios_dir, issue=None, evidence_dir=None):
                 seen["dir"] = scenarios_dir
                 return {"verdict": "pass"}
 
@@ -187,7 +189,7 @@ class TestScenariosDirWiring(unittest.TestCase):
         wt = tempfile.mkdtemp(prefix="recheck-wt-")
         seen = {}
 
-        def recorder(cwd, pid_file, scenarios_dir, issue=None):
+        def recorder(cwd, pid_file, scenarios_dir, issue=None, evidence_dir=None):
             seen["dir"] = scenarios_dir
             seen["issue"] = issue
             return {"verdict": "fail"}
@@ -206,7 +208,7 @@ class TestScenariosDirWiring(unittest.TestCase):
         wt = tempfile.mkdtemp(prefix="recheck-wt-")
         seen = {}
 
-        def recorder(cwd, pid_file, scenarios_dir, issue=None):
+        def recorder(cwd, pid_file, scenarios_dir, issue=None, evidence_dir=None):
             seen["dir"] = scenarios_dir
             return {"verdict": "fail"}
 
@@ -255,7 +257,9 @@ class TestPromptViewSanity(unittest.TestCase):
     def test_implausibly_small_billed_prompt_is_durable_instrument_observation(self):
         rendered = "=== app.py ===\nx = 1\n" + ("x" * 80000)
 
-        def cheap_chat(messages, model, max_tokens=None, reasoning_effort=None):
+        def cheap_chat(messages, model, max_tokens=None, reasoning_effort=None,
+                       trace_dir=None, call_id="call", api="openai-completions",
+                       max_tokens_field="max_tokens"):
             if model == lap.IMPLEMENTER_MODEL:
                 content = json.dumps([{"file": "app.py", "find": "x = 1", "replace": "x = 2"}])
             else:
@@ -325,7 +329,7 @@ class TestMergeEvidencePassThrough(unittest.TestCase):
                          "marker": "distinctive"}
         seen = {}
 
-        def recorder(cwd, pid_file, scenarios_dir, issue=None):
+        def recorder(cwd, pid_file, scenarios_dir, issue=None, evidence_dir=None):
             return real_evidence
 
         def merge_recorder(issue, repo, wt, ev):
@@ -351,6 +355,48 @@ def _patch_verify_recorder(recorder):
     import verify
     return unittest.mock.patch.object(verify, "verify_candidate",
                                      side_effect=recorder)
+
+class TestLocalReviewSnapshot(unittest.TestCase):
+    def test_snapshot_survives_cleanup_without_merge_or_close(self):
+        with FakeLapEnv("none") as env, \
+             unittest.mock.patch.object(lap, "MERGE_MODE", "review"), \
+             unittest.mock.patch.object(lap.merge, "full_merge", side_effect=AssertionError("must not merge")), \
+             unittest.mock.patch.object(lap, "_gh", side_effect=AssertionError("must not close")):
+            lap.run(env.ISSUE)
+            with open(os.path.join(env.base, "lap-result.json")) as f:
+                result = json.load(f)
+            self.assertEqual(result["outcome"], "awaiting-review")
+            with open(os.path.join(result["evidence_dir"], "merge.json")) as f:
+                snapshot = json.load(f)
+            self.assertFalse(os.path.exists(env.worktree))
+            self.assertEqual(git(env.repo, "show", snapshot["ref"] + ":app.py"), "x = 2\n")
+            self.assertFalse(snapshot["pushed"])
+            self.assertFalse(snapshot["merged"])
+
+    def test_bad_enhancement_baseline_prevents_model_call(self):
+        with FakeLapEnv("none") as env, \
+             unittest.mock.patch.object(lap, "TASK_KIND", "enhancement"), \
+             unittest.mock.patch.object(lap.verify, "verify_candidate", return_value={"verdict": "HOLD"}), \
+             unittest.mock.patch.object(lap.agent, "chat", side_effect=AssertionError("must not call model")):
+            lap.run(env.ISSUE)
+            with open(os.path.join(env.base, "lap-result.json")) as f:
+                result = json.load(f)
+            self.assertEqual(result["gate"], "baseline")
+            self.assertEqual(result["outcome"], "failure")
+
+    def test_verify_source_mutation_cannot_be_reported_reviewable(self):
+        def changing_verify(cwd, pid, sdir, issue=None, evidence_dir=None):
+            with open(os.path.join(cwd, "app.py"), "w") as f:
+                f.write("x = 3\n")
+            return {"verdict": "pass"}
+        with FakeLapEnv("none") as env, \
+             unittest.mock.patch.object(lap, "MERGE_MODE", "review"), \
+             unittest.mock.patch.object(lap.verify, "verify_candidate", side_effect=changing_verify):
+            lap.run(env.ISSUE)
+            with open(os.path.join(env.base, "lap-result.json")) as f:
+                result = json.load(f)
+            self.assertEqual(result["gate"], "verify-source")
+            self.assertEqual(result["outcome"], "failure")
 
 if __name__ == "__main__":
     unittest.main()

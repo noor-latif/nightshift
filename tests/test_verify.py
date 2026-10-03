@@ -551,5 +551,53 @@ class TestExecOracle(unittest.TestCase):
         kinds = {c["assertion"].split(" ")[0] for c in r["checks"]}
         self.assertEqual(kinds, {"exec", "GET"})
 
+class TestNativeBoundary(unittest.TestCase):
+    def test_only_designated_suite_requires_authoritative_positive_total(self):
+        # guard argv must stay distinct from every suite argv, or the
+        # designated-exactly-once check rejects the fixture (not the contract).
+        guard = [sys.executable, "-c", "print('guard: passed\\n# tests 0')"]
+        with tempfile.TemporaryDirectory() as cwd:
+            for text, expected in (("# pass 0\n# fail 0\n# tests 2", "pass"),
+                                   ("# tests 0", "fail"), ("# pass 2", "fail"),
+                                   ("# tests nope", "fail"), ("# tests\n2", "fail"),
+                                   ("# tests 1\n# tests 2", "fail")):
+                suite = [sys.executable, "-c", "print(%r)" % text]
+                status, rows = verify._run_native_commands([guard, suite], cwd, suite)
+                self.assertEqual(status, expected, rows)
+                self.assertEqual(rows[0]["status"], "pass")
+
+    def test_duplicate_suite_argv_is_rejected(self):
+        argv = [sys.executable, "-c", "print('# tests 1')"]
+        with tempfile.TemporaryDirectory() as cwd:
+            with self.assertRaises(ValueError):
+                verify._run_native_commands([argv, argv], cwd, argv)
+            with self.assertRaises(ValueError):
+                verify._run_native_commands([argv], cwd, [sys.executable, "-c", "pass"])
+
+    def test_full_artifacts_and_hold_precedence_through_candidate(self):
+        import unittest.mock as mock
+        fail = [sys.executable, "-c", "print('x'*10000); raise SystemExit(1)"]
+        missing = ["/nonexistent/factory-command"]
+        suite = [sys.executable, "-c", "print('# tests 1')"]
+        with tempfile.TemporaryDirectory() as cwd:
+            for commands in ([fail, missing, suite], [missing, fail, suite]):
+                with mock.patch.object(verify, "NATIVE_VERIFY_COMMANDS", commands), \
+                     mock.patch.object(verify, "NATIVE_SUITE_COMMAND", suite), \
+                     mock.patch.object(verify, "NATIVE_PREPARE_COMMANDS", None):
+                    evidence = verify.verify_candidate(cwd, cwd + '/pid', cwd)
+                self.assertEqual(evidence["verdict"], "HOLD")
+                row = next(r for r in evidence["unit"]["commands"] if r["command"] == fail)
+                with open(row["artifacts"]["stdout"]) as f:
+                    self.assertEqual(f.read(), "x" * 10000 + "\n")
+                self.assertLessEqual(len(row["output"]), 8000)
+
+    def test_timeout_is_hold_with_partial_output(self):
+        command = [sys.executable, "-u", "-c", "import time; print('started'); time.sleep(5)"]
+        with tempfile.TemporaryDirectory() as cwd:
+            status, rows = verify._run_native_commands([command], cwd, timeout_s=0.1)
+            self.assertEqual(status, "HOLD")
+            self.assertTrue(rows[0]["timed_out"])
+            self.assertIn("started", rows[0]["output"])
+
 if __name__ == "__main__":
     unittest.main()

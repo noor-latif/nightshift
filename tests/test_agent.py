@@ -26,6 +26,7 @@ def load(name):
 
 class FakeResp:
     def __init__(self, raw):
+        self.headers = {}
         self._raw = raw
 
     def read(self):
@@ -234,6 +235,99 @@ class TestReviewerPrompt(unittest.TestCase):
         self.assertIn("never fail a criterion merely because the diff", flat)
         self.assertIn("unchanged code retains its existing behavior", flat)
 
+
+class TestSanitizedTrace(unittest.TestCase):
+    def test_recursive_json_sse_embedded_secrets_and_actual_usage(self):
+        import agent
+        import tempfile
+        from unittest.mock import patch
+        chunk = {"model": "served-snapshot", "provider": {"email": "hidden@example.org"},
+                 "choices": [{"delta": {"content": "prefix Bearer abc suffix ENV_SENTINEL"},
+                              "finish_reason": "stop"}],
+                 "usage": {"prompt_tokens": 17}, "nested": {"access_token": "raw-token"}}
+        raw = ("data: " + json.dumps(chunk) + "\n\ndata: [DONE]\n").encode()
+        with tempfile.TemporaryDirectory() as traces, patch.dict(os.environ, {agent.SURPLUS_API_KEY_ENV: "ENV_SENTINEL"}):
+            result = chat([], "requested", api_key="CALL_SENTINEL", trace_dir=traces,
+                          opener=FakeOpener([FakeResp(raw)]))
+            with open(os.path.join(traces, "model-calls.jsonl")) as f:
+                text = f.read()
+            for secret in ("ENV_SENTINEL", "CALL_SENTINEL", "Bearer abc", "raw-token", "hidden@example.org"):
+                self.assertNotIn(secret, text)
+            response = json.loads(text.splitlines()[-1])
+            self.assertEqual(response["usage"]["prompt_tokens"], 17)
+            self.assertEqual(response["response_metadata"][0]["model"], "served-snapshot")
+            self.assertEqual(result["finish_reason"], "stop")
+
+    def test_malformed_json_is_traced_without_adding_retry(self):
+        import tempfile
+        op = FakeOpener([FakeResp(b'data: {bad\n')])
+        with tempfile.TemporaryDirectory() as traces:
+            with self.assertRaises(ValueError):
+                chat([], "m", api_key="safe-key", opener=op, trace_dir=traces)
+            self.assertEqual(len(op.calls), 1)
+            with open(os.path.join(traces, "model-calls.jsonl")) as f:
+                self.assertEqual(json.loads(f.readlines()[-1])["phase"], "stream-error")
+
+class TestResponsesTextContract(unittest.TestCase):
+    def response(self, status="completed", reason=None):
+        return {"id": "resp-local", "model": "served-sol", "status": status,
+                "incomplete_details": {"reason": reason} if reason else None,
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": "VERDICT: accept"}]}],
+                "usage": {"input_tokens": 21, "output_tokens": 4,
+                          "output_tokens_details": {"reasoning_tokens": 2}, "buyer_cost_micro": 12}}
+
+    def test_actual_responses_request_and_result(self):
+        op = FakeOpener([FakeResp(json.dumps(self.response()).encode())])
+        got = chat([{"role": "user", "content": "review"}], "requested-sol",
+                   api="openai-responses", reasoning_effort="medium", api_key="key", opener=op)
+        payload = json.loads(op.calls[0].data)
+        self.assertTrue(op.calls[0].full_url.endswith("/v1/responses"))
+        self.assertEqual(payload["input"], [{"role": "user", "content": "review"}])
+        self.assertEqual(payload["reasoning"], {"effort": "medium"})
+        self.assertFalse(payload["stream"])
+        self.assertFalse(payload["store"])
+        self.assertEqual(got["content"], "VERDICT: accept")
+        self.assertEqual(got["usage"]["prompt_tokens"], 21)
+        self.assertEqual(got["usage"]["buyer_cost_micro"], 12)
+        self.assertEqual(got["response_metadata"][0]["model"], "served-sol")
+
+    def test_incomplete_length_retries_but_failed_never_accepts(self):
+        partial = self.response("incomplete", "max_output_tokens")
+        op = FakeOpener([FakeResp(json.dumps(partial).encode()), FakeResp(json.dumps(self.response()).encode())])
+        got = chat([], "sol", api="openai-responses", api_key="key", opener=op)
+        self.assertEqual(got["finish_reason"], "stop")
+        self.assertEqual(json.loads(op.calls[1].data)["max_output_tokens"], 1024)
+        for status in ("failed", "in_progress", "incomplete"):
+            op = FakeOpener([FakeResp(json.dumps(self.response(status)).encode())])
+            with self.assertRaises(PermanentError):
+                chat([], "sol", api="openai-responses", api_key="key", opener=op)
+            self.assertEqual(len(op.calls), 1)
+
+class TestChatConfigBoundary(unittest.TestCase):
+    """A blank role model is an operator error, not a request: it must fail
+    before any HTTP call (observed as a 120s gateway transport timeout)."""
+
+    def test_blank_model_rejected_before_http(self):
+        op = FakeOpener([])
+        for model in ("", "   ", None, 5):
+            with self.assertRaises(ValueError):
+                chat([{"role": "user", "content": "x"}], model, api_key="k", opener=op)
+        self.assertEqual(op.calls, [], "no request may be built for a blank model")
+
+    def test_output_cap_field_is_configurable(self):
+        # the wrong completions field is accepted with HTTP 200 and then
+        # returns an empty completion (observed), so the wire field is
+        # explicit per role and asserted on the actual request bytes.
+        op = FakeOpener([FakeResp(load("sse_stream.txt"))])
+        chat([{"role": "user", "content": "x"}], "m", max_tokens=4096,
+             api_key="k", opener=op, max_tokens_field="max_completion_tokens")
+        sent = json.loads(op.calls[0].data)
+        self.assertEqual(sent["max_completion_tokens"], 4096)
+        self.assertNotIn("max_tokens", sent)
+        op = FakeOpener([FakeResp(load("sse_stream.txt"))])
+        chat([{"role": "user", "content": "x"}], "m", max_tokens=4096,
+             api_key="k", opener=op)
+        self.assertEqual(json.loads(op.calls[0].data)["max_tokens"], 4096)
 
 if __name__ == "__main__":
     unittest.main()

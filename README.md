@@ -14,10 +14,51 @@ under `docs/evidence/` (MANIFEST.md is the index).
   identity read-back).
 - `scenarios/` — HTTP scenario probes for the toy-product rig.
 - `tests/` — stdlib unittest; run offline, no network/ssh/gh/API key needed.
+  The supervisor test's child process strips `NTFY_TOPIC` (a fixture once
+  posted to the operator's real topic); this is a child-env fix, not a
+  general network restriction — other clones are not presumed fixed.
 
 ## Run
 
     python3 -m unittest discover -s tests
 
-Python 3 stdlib only. No pip dependencies. Laps run on a remote host via ssh;
-development happens locally. Scope: time-boxed spike — issue → implement → verify → merge → deploy laps, zero human interventions, zero false greens.
+Python 3 stdlib only. No pip dependencies. The historical lap path still
+targets a remote host over ssh; local operator laps run the same entrypoint
+directly (below). Scope: time-boxed spike — issue → implement → verify →
+merge → deploy laps, zero human interventions, zero false greens.
+
+## Local lap — canonical entrypoint
+
+This checkout, `~/repos/factory-spike`, is the canonical source. Other
+clones/workspaces (`~/nightshift`, trial workspaces) are not it.
+
+    cd ~/repos/factory-spike
+    python3 src/lap.py <issue-number>
+
+A fresh session gets the current behavior by running that path; nothing is
+inherited from another clone or from a previous session's environment. All
+capability is opt-in through the launch env, and every default is the
+historical behavior:
+
+- `FACTORY_TASK_FILE=<abs path>` — read `{title, body}` from a trusted file
+  outside the checkout instead of GitHub. Unset = the `gh` issue path.
+- `FACTORY_NEW_FILES=<rel,rel>` — allowlist of plain relative paths the lap
+  may create (a create mutation is
+  `{"file":..., "create": true, "find": "", "replace": "<whole file>"}`);
+  escape/symlink/already-exists are rejected. Empty = edit-only.
+- `FACTORY_NATIVE_CONFIG=<json>` — trusted native commands:
+  `{"verify": [[argv...], ...], "suite": [argv...], "prepare": [[argv...]],
+  "task_kind": "bug|enhancement", "merge_mode": "auto|review"}`. The suite is
+  the one verify argv whose authoritative TAP `# tests N` (N > 0) is parsed.
+  Unset = the historical Python gate.
+- `merge_mode: "review"` — stop after local verification: retain a local
+  `review/<run-id>` ref and `merge.json`, no push/PR/merge/deploy/close.
+- `REVIEWER_API`/`IMPLEMENTER_API` (`openai-completions|openai-responses`),
+  `REVIEWER_REASONING_EFFORT`, `IMPLEMENTER_MAX_TOKENS_FIELD`,
+  `FACTORY_HTTP_TIMEOUT_S`, `COST_CEILING_USD` — per-role transport and caps;
+  defaults unchanged.
+
+Do not run the supervisor (`src/supervisor.py`) expecting a local trial: it
+dispatches real model calls and remote writes. Configuration details, native
+gate contract and the exercised proof are in
+`docs/PREREQUISITES_2026-10-02.md`.
