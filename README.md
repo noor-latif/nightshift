@@ -36,9 +36,13 @@ clones/workspaces (`~/nightshift`, trial workspaces) are not it.
     python3 src/lap.py <issue-number>
 
 A fresh session gets the current behavior by running that path; nothing is
-inherited from another clone or from a previous session's environment. All
-capability is opt-in through the launch env, and every default is the
-historical behavior:
+inherited from another clone or from a previous session's environment. The
+local task input, new-file creation, native command config and review/
+enhancement modes are opt-in through the launch env. Sanitized model-call
+traces, the blank-model guard and the reviewer design context are always
+active, not gated. An unconfigured run keeps the historical task source
+(`gh`), the edit-only mutation capability and the historical gate defaults —
+it is not byte-for-byte the old behavior.
 
 - `FACTORY_TASK_FILE=<abs path>` — read `{title, body}` from a trusted file
   outside the checkout instead of GitHub. Unset = the `gh` issue path.
