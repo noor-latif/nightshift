@@ -1,11 +1,12 @@
-"""L-016 regression tests: worktree_add registered-path collision self-heal,
-and run()'s finally-cleanup when worktree_for raises before assignment.
+"""L-016 regression tests at the `worktree_for` level: the registered-path
+collision self-heal.
 
 The live trap (2026-09-28 launch-5, issue 17): a stale registered worktree at
 .factory/worktrees/agent-issue-17 made `git worktree add ... -B agent/issue-17`
-die with "'agent/issue-17' is already used by worktree at <path>"; run() had
-worktree=None at that point so the finally-block cleanup was skipped and the
-trap survived every crash. Real git scenarios, no mocks of git itself."""
+die with "'agent/issue-17' is already used by worktree at <path>". Real git
+scenarios, no mocks of git itself. The companion guard in run() — the finally
+cleanup when worktree_for raises before assignment — is covered in
+tests/test_lap_run.py (TestWorktreePreAssignCleanup)."""
 
 import os
 import subprocess

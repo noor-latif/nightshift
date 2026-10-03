@@ -455,5 +455,28 @@ class TestLocalReviewSnapshot(unittest.TestCase):
             self.assertEqual(result["gate"], "verify-source")
             self.assertEqual(result["outcome"], "failure")
 
+class TestWorktreePreAssignCleanup(unittest.TestCase):
+    """L-016: run() pre-assigns the deterministic worktree path so its finally
+    reaps it even when worktree_for raises before assignment. The skipped
+    finally is how the launch-5 crash loop started: the registered trap
+    survived every crash and every retry hit it again."""
+
+    def test_run_reaps_registered_trap_when_worktree_for_raises(self):
+        with FakeLapEnv("none") as env:
+            os.makedirs(os.path.dirname(env.worktree), exist_ok=True)
+            git(env.repo, "worktree", "add", env.worktree, "-B", "agent/issue-21",
+                "origin/main")
+            self.assertIn(env.worktree, git(env.repo, "worktree", "list", "--porcelain"))
+            with unittest.mock.patch.object(
+                    lap, "worktree_for",
+                    side_effect=RuntimeError("worktree add failed: is already used by worktree")):
+                lap.run(FakeLapEnv.ISSUE)
+            with open(os.path.join(env.base, "lap-result.json")) as f:
+                result = json.load(f)
+            self.assertEqual(result["outcome"], "crash")
+            # the pre-assigned path was reaped despite worktree_for raising
+            self.assertNotIn(env.worktree,
+                             git(env.repo, "worktree", "list", "--porcelain"))
+
 if __name__ == "__main__":
     unittest.main()
