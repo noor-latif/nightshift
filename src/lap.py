@@ -614,7 +614,8 @@ class Lap:
                 os._exit(70)
             self._hb_stop.wait(10)
 
-    def set_result(self, outcome, error=None, gate=None, observations=None):
+    def set_result(self, outcome, error=None, gate=None, observations=None,
+                   extra=None):
         os.makedirs(os.path.dirname(RESULT_PATH) or ".", exist_ok=True)
         row = {"issue": self.issue, "outcome": outcome, "run_id": self.run_id,
                "evidence_dir": os.path.abspath(self.evdir)}
@@ -624,14 +625,18 @@ class Lap:
             row["error"] = str(error)
         if observations:
             row["observations"] = observations
+        if extra:
+            row.update(extra)
         tmp = RESULT_PATH + ".tmp"
         with open(tmp, "w") as f:
             json.dump(row, f)
         os.replace(tmp, RESULT_PATH)
 
 
-def finish(lap, outcome, gate=None, error=None, caught=None):
-    """Terminal lap state: verdict evidence + result file for the supervisor."""
+def finish(lap, outcome, gate=None, error=None, caught=None, extra=None):
+    """Terminal lap state: verdict evidence + result file for the supervisor.
+    extra lands in both artifacts: terminal facts a supervisor/reviewer needs
+    to find without reading the evidence dir (e.g. a retained candidate)."""
     observations = getattr(lap, "observations", [])
     verdict = {"verdict": "pass" if outcome in ("success", "success-close-failed", "awaiting-review") else "fail", "outcome": outcome}
     if gate:
@@ -644,9 +649,11 @@ def finish(lap, outcome, gate=None, error=None, caught=None):
         verdict["caught_confabulation"] = caught
     if error is not None:
         verdict["error"] = error if isinstance(error, str) else json.dumps(error, default=str)
+    if extra:
+        verdict.update(extra)
     lap._dump("verdict.json", verdict)
     lap.set_result(outcome, error=verdict.get("error"), gate=gate,
-                   observations=observations)
+                   observations=observations, extra=extra)
     lap.event("lap-end", outcome=outcome, gate=gate)
 
 
@@ -762,9 +769,24 @@ def run(issue):
                           caught="reviewer completion truncated (finish_reason=length)")
         verdict_m = re.search(r"VERDICT:\s*(accept|reject)", rev["content"], re.I)
         if not verdict_m or verdict_m.group(1).lower() != "accept":
+            # A rejected candidate is still real work: retain it under its own
+            # ref (the agent branch survives cleanup, but nothing points at
+            # it) and record verdict + sha in the run's artifacts, so the
+            # candidate is machine-discoverable instead of tribal knowledge.
+            commit = _git(["rev-parse", "HEAD"], worktree)
+            repo = os.path.abspath(os.path.expanduser(PRODUCT_REPO))
+            ref = "refs/heads/rejected/%s" % lap.run_id
+            _git(["update-ref", ref, commit, "0" * 40], repo)
+            rejected = {"verdict": "reject" if verdict_m else "unparseable",
+                        "commit": commit, "ref": ref, "repository": repo,
+                        "inspect_argv": ["git", "-C", repo, "show", commit]}
+            lap._dump("rejected.json", rejected)
+            lap.event("review-reject", verdict=rejected["verdict"],
+                      commit=commit, ref=ref)
             return finish(lap, "failure", gate="review",
                           caught=("reviewer rejected the diff" if verdict_m
-                                  else "reviewer gave no parseable verdict"))
+                                  else "reviewer gave no parseable verdict"),
+                          extra={"rejected_candidate": rejected})
         lap.event("review-accept")
         lap.check_clock()
         pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)

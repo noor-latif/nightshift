@@ -398,6 +398,38 @@ class TestLocalReviewSnapshot(unittest.TestCase):
             self.assertFalse(snapshot["pushed"])
             self.assertFalse(snapshot["merged"])
 
+    def test_rejected_candidate_retained_with_ref_and_record(self):
+        # reviewer rejects: the candidate must stay discoverable after
+        # worktree cleanup — a rejected/<run-id> ref plus verdict + sha in
+        # the run's artifacts, not only the bare agent branch.
+        def rejecting_chat(messages, model, **kw):
+            if model == lap.IMPLEMENTER_MODEL:
+                content = json.dumps([{"file": "app.py", "find": "x = 1",
+                                       "replace": "x = 2"}])
+            else:
+                content = "VERDICT: reject"
+            return {"content": content, "finish_reason": "stop",
+                    "usage": {"buyer_cost_micro": 1000}}
+
+        with FakeLapEnv("none") as env, \
+             unittest.mock.patch.object(lap, "MERGE_MODE", "review"), \
+             unittest.mock.patch.object(lap.agent, "chat", side_effect=rejecting_chat), \
+             unittest.mock.patch.object(lap.merge, "full_merge", side_effect=AssertionError("must not merge")), \
+             unittest.mock.patch.object(lap, "_gh", side_effect=AssertionError("must not close")):
+            lap.run(env.ISSUE)
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            result = json.load(f)
+        self.assertEqual(result["outcome"], "failure")
+        self.assertEqual(result["gate"], "review")
+        rejected = result["rejected_candidate"]
+        self.assertEqual(rejected["verdict"], "reject")
+        self.assertFalse(os.path.exists(env.worktree))
+        self.assertEqual(git(env.repo, "rev-parse", rejected["ref"]).strip(),
+                         rejected["commit"])
+        self.assertEqual(git(env.repo, "show", rejected["ref"] + ":app.py"), "x = 2\n")
+        with open(os.path.join(result["evidence_dir"], "rejected.json")) as f:
+            self.assertEqual(json.load(f)["commit"], rejected["commit"])
+
     def test_bad_enhancement_baseline_prevents_model_call(self):
         with FakeLapEnv("none") as env, \
              unittest.mock.patch.object(lap, "TASK_KIND", "enhancement"), \
