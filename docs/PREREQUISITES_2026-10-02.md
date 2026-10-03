@@ -167,3 +167,18 @@ Comment correction: the catalog declares `maxTokensField
 documents `max_tokens`/`max_completion_tokens` as aliases, so the earlier
 "wrong field causes an empty completion" causal claim is retracted; the knob is
 per-role configurability, not a proven root cause.
+
+## Known limits
+
+- A model that answers a tiny health/hello prompt is **not** thereby proven able
+  to complete a full task. A successful short response does not establish enough
+  usable output budget; hidden reasoning can consume the whole cap.
+- Before declaring a call successful, inspect the retained trace: check the
+  finish reason **and** the visible content. A usage-only stream with no
+  choice/finish is not a completion, and `length`/partial output is not a
+  complete candidate. The kernel already fails closed on both; never treat
+  either as a pass or silently substitute another model.
+- `max_tokens` and `max_completion_tokens` are documented aliases; the field
+  name is not an established root cause of an empty completion (see the
+  correction above). Callers cannot assert the exact upstream adapted cap when
+  the gateway reports an adaptation header.
