@@ -193,3 +193,9 @@ per-role configurability, not a proven root cause.
   name is not an established root cause of an empty completion (see the
   correction above). Callers cannot assert the exact upstream adapted cap when
   the gateway reports an adaptation header.
+- Later owner-requested trusted Sonnet5.5 diagnosis produced one complete
+  LOW/32,768 transport/mutation-envelope response through OpenRouter, while
+  HIGH/16,384 still truncated. This does not certify a complete homepage's
+  facts, UI or taste, and the external diagnostic pin is not generic lap
+  routing behavior. The source-backed next-run plan and deferred changes are
+  in [SONNET_WEBSITE_PLAN.md](SONNET_WEBSITE_PLAN.md); no defaults changed.

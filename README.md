@@ -66,3 +66,9 @@ Do not run the supervisor (`src/supervisor.py`) expecting a local trial: it
 dispatches real model calls and remote writes. Configuration details, native
 gate contract and the exercised proof are in
 `docs/PREREQUISITES_2026-10-02.md`.
+
+For reference-led Sonnet website work, read
+[`docs/SONNET_WEBSITE_PLAN.md`](docs/SONNET_WEBSITE_PLAN.md): integrated
+safeguards versus proposed routing/usage/browser improvements, stage-specific
+effort and budgets, and the owner taste gate. It is a plan, not an automatic
+paid launch or a change to model-role/provider defaults.
