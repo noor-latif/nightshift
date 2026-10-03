@@ -17,7 +17,6 @@ import shutil
 import signal
 import subprocess
 import time
-import urllib.request
 import tempfile
 from settings import (DEPLOY_MODE, NATIVE_PREPARE_COMMANDS, NATIVE_SUITE_COMMAND,
                       NATIVE_VERIFY_COMMANDS, PROVENANCE_ENV, READY_TIMEOUT_S,

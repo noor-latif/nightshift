@@ -13,7 +13,6 @@ import time
 import urllib.request
 
 from settings import (
-    EVIDENCE_DIR,
     GITHUB_REPO,
     HEARTBEAT_PATH,
     HEARTBEAT_TTL_S,

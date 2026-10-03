@@ -60,8 +60,9 @@ def claim_next(repo, issues_dir=CLAIMS_DIR, now=None, gh="gh", dispositions=None
         if "agent/issue-%d" % issue["number"] in pr_branches:
             continue
         path = claim_path(issues_dir, issue["number"])
-        # stale claim breakable with a note (at MAX_CONCURRENT_LAPS=1 the only
-        # stale source is a crashed supervisor; O_EXCL claim is the fence)
+        # stale claim breakable with a note (one lap at a time — the instance
+        # lock plus state["lap"] — so the only stale source is a crashed
+        # supervisor; O_EXCL claim is the fence)
         if os.path.exists(path):
             if not stale(path, now):
                 continue

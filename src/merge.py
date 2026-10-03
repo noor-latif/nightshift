@@ -6,7 +6,6 @@ the merge commit and the PR head — never SHA equality (squash creates new
 SHAs; this rule is load-bearing).
 """
 
-import json
 import subprocess
 
 

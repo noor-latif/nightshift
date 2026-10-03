@@ -841,7 +841,6 @@ class TestMainDepsWiring(unittest.TestCase):
         # one tick against a state whose claim file belongs to a TERMINAL
         # (merged) issue, using a deps dict with exactly main()'s key set:
         # must reap cleanly, no KeyError, no phantom crash row
-        import selector
         tmp = tempfile.mkdtemp()
         claims = os.path.join(tmp, "claims")
         os.makedirs(claims)

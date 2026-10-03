@@ -6,7 +6,6 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from deploy import build_deploy_script  # noqa: E402
-from merge import trees_equal  # noqa: E402
 import selector  # noqa: E402
 
 

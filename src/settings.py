@@ -40,7 +40,6 @@ REVIEWER_REASONING_EFFORT = os.environ.get("REVIEWER_REASONING_EFFORT")
 if any(api not in ("openai-completions", "openai-responses") for api in (IMPLEMENTER_API, REVIEWER_API)):
     raise ValueError("role API must be openai-completions|openai-responses")
 RETRY_BUDGET = 2
-MAX_CONCURRENT_LAPS = 1
 # Public-subscription leak fix: the old hardcoded topic is public on origin
 # main. From env only; empty default = notify() skips transport but still
 # writes its receipt (receipts are the S7 evidence; the phone channel is
