@@ -141,13 +141,24 @@ Exact command/output/hashes and reviewed local jj revision are saved separately.
 Earlier `smoke-output.txt`/18-check claims are historical partial evidence,
 not readiness evidence for this corrected contract.
 
+### Initial checkpoint (before subsequent authorized verification)
+
 Permanent behavioral regressions were added following existing unittest
-conventions. **They were not executed: owner permission is required.**
-No site tests, builds, installs, browser, remote provisioning, paid API, push,
-or launch was performed. Real product baseline, least-privilege execution,
-runtime provider health/cost, operator captures and final site acceptance
-remain pending; catalog/API routing metadata is established, but kernel fixture
-proof does not certify website readiness.
+conventions. At this checkpoint they had **not** been executed (owner
+permission was required), and no site tests, builds, installs, browser, remote
+provisioning, paid API, push, or launch had been performed.
+
+### Latest checkpoint (2026-10-03)
+
+That "not executed" status is superseded: the canonical suite has since run on
+the integrated source — `Ran 201 tests … OK`, returncode 0 (receipts in
+`~/repos/factory-docs/kormotorn-trial/evidence/fresh-run-integration/suite-run.json`),
+and a fresh canonical subprocess smoke (synthetic localhost fixture) reached
+`awaiting-review`. Separately, the GTS site baseline and the Körmotorn
+homepage browser verification were already performed and reported in their own
+documents. This kernel documentation does not itself certify whole-product or
+owner-visual acceptance; it records the kernel-path receipts and their exact
+source hash.
 
 ## Integrated into the canonical checkout (2026-10-03)
 
