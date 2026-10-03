@@ -49,8 +49,15 @@ class TestSelfRunOracleAlignment(unittest.TestCase):
     def sources(self):
         # repo scenarios/ for #1-#6; the deployment's scenarios-dogfood/
         # for the dogfood queue (#6 re-queued + #12-#14). Same checks both.
+        # The dogfood dir is NOT in this repo, so its absence is a skipped
+        # subTest with the reason, never a FileNotFoundError: the suite must
+        # run offline on a bare clone (README "Run").
         for d, issues in ((self.dir, SELF_RUN_ISSUES),
                           (DOGFOOD_DIR, sorted(DOGFOOD_ISSUES))):
+            if not os.path.isdir(d):
+                with self.subTest(dir=d):
+                    self.skipTest("scenarios dir absent (out-of-repo deployment dir): %s" % d)
+                continue
             for n in issues:
                 yield d, n
 
