@@ -267,6 +267,21 @@ def handle_lap_end(state, outcome, now, deps):
 def tick(state, now, deps):
     """One supervisor tick: health-check → reconcile → dispatch → tail."""
     events = []
+    # Reconcile FIRST: reap claims whose lap is gone (supervisor restart, or a
+    # tick that died between claiming and persisting its lap state). A reaped
+    # orphan is retryable immediately, so this same tick can dispatch it again
+    # — reconciling after dispatch left the queue stranded until the claim
+    # aged out (K6). The idle classification below therefore reads the
+    # post-reconcile dispositions.
+    observations = deps.get("reconcile_observations") or []
+    for path, claim in deps.get("reconcile", lambda now: [])(now):
+        if not state.get("lap") or state["lap"].get("issue") != claim["issue"]:
+            deps["break_claim"](path, now)
+            events.append("reclaimed:%s" % path)
+            note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
+            observations.append(note)
+            runtime_log("intervention", detail=note, claim=path)
+
     lap = state.get("lap")
 
     if lap:
@@ -304,15 +319,6 @@ def tick(state, now, deps):
                 else:
                     events.append("DRAIN:%d parked, %d merged" % (parked, merged))
 
-    # reconcile: reap claims for issues with no live lap (supervisor restart)
-    observations = deps.get("reconcile_observations") or []
-    for path, claim in deps.get("reconcile", lambda now: [])(now):
-        if not state.get("lap") or state["lap"].get("issue") != claim["issue"]:
-            deps["break_claim"](path, now)
-            events.append("reclaimed:%s" % path)
-            note = "orphan claim reaped: %s (issue %s)" % (path, claim.get("issue"))
-            observations.append(note)
-            runtime_log("intervention", detail=note, claim=path)
     save_state(state, deps["state_path"])
     return events
 
@@ -366,9 +372,13 @@ def reconcile_dead_claims(now, state, claims_dir, result_path=RESULT_PATH):
     """
     from selector import OUTCOMES, handle_outcome, read_claim
 
+    try:
+        names = sorted(os.listdir(claims_dir))
+    except FileNotFoundError:
+        return []  # no claim has ever been written: nothing to reap
     live_issue = (state.get("lap") or {}).get("issue")
     dead = []
-    for name in sorted(os.listdir(claims_dir)):
+    for name in names:
         if not name.startswith("issue-"):
             continue
         path = os.path.join(claims_dir, name)

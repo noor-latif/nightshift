@@ -270,6 +270,26 @@ class TestParkAndContinue(unittest.TestCase):
         self.assertIn("dispatch:dispatched", events)
         self.assertEqual(state["lap"]["issue"], 6)
 
+    def test_reaped_orphan_is_redispatched_in_the_same_tick(self):
+        # K6: a tick that died between claiming and persisting its lap state
+        # must not strand the queue — the next tick reaps the orphan claim and
+        # dispatches again instead of reporting an idle/BLOCKED queue
+        claims = os.path.join(self.tmp, "claims")
+        os.makedirs(claims)
+        claim_path = os.path.join(claims, "issue-18.json")
+        with open(claim_path, "w") as f:
+            json.dump({"issue": 18, "claimed_at": 900.0}, f)
+        deps = fake_deps(self.tmp, self.notify)
+        deps["reconcile"] = lambda now: [(claim_path, {"issue": 18})]
+        deps["break_claim"] = lambda path, now: os.remove(path)
+        deps["claim"] = lambda now: (None if os.path.exists(claim_path)
+                                     else {"issue": 18, "path": claim_path})
+        state = {"issues": {}, "lap": None, "started_at": None}
+        events = supervisor.tick(state, self.now, deps)
+        self.assertIn("reclaimed:" + claim_path, events)
+        self.assertIn("dispatch:dispatched", events)
+        self.assertEqual(state["lap"]["issue"], 18)
+
     def test_idle_after_all_terminal_drains(self):
         deps = fake_deps(self.tmp, self.notify, claim_result=None)
         state = self._state_with_parked()
