@@ -263,8 +263,9 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
     field name (see lap-9001 evidence; the causal claim is retracted).
 
     trace_dir set → every actual attempt (request payload, response body,
-    allowlisted headers, HTTP errors, transport errors) is appended to
-    <trace_dir>/model-calls.jsonl, sanitized. Requested model/params are
+    allowlisted headers, HTTP errors, transport errors, mid-stream cuts as a
+    typed "stream-incomplete" fault with the partial bytes read) is appended
+    to <trace_dir>/model-calls.jsonl, sanitized. Requested model/params are
     recorded verbatim; the RESPONSE model, if the gateway echoes one in
     the stream, is recorded separately (requested ≠ served — the GLM
     fallback incident)."""
@@ -313,10 +314,26 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
             url, payload,
             {"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
         )
+        attempt_started = time.monotonic()
         try:
             with open_fn(req, timeout=HTTP_TIMEOUT_S) as resp:
-                raw = resp.read()
                 hdrs = _safe_headers(resp) if trace_dir else {}
+                raw = resp.read()
+        except http.client.IncompleteRead as e:
+            # The provider cut the SSE body mid-chunk: the request billed but
+            # nothing reached the caller. Typed fault at the stream-read
+            # boundary — partial bytes actually read, elapsed time, the
+            # requested model and the stream id header when the gateway sent
+            # one — then the existing bounded retry below, unchanged.
+            trace("stream-incomplete", payload_obj=payload_obj, attempt=attempt,
+                  raw=e.partial, requested_model=model,
+                  partial_bytes=len(e.partial or b""),
+                  elapsed_s=round(time.monotonic() - attempt_started, 3),
+                  stream_id=hdrs.get("x-request-id") or hdrs.get("request-id"),
+                  error="%s: %s" % (type(e).__name__, e))
+            if attempt == 2:
+                raise TransientError("connection error after retry: %s" % e)
+            continue
         except urllib.error.HTTPError as e:
             body = e.read()
             trace("http-error", payload_obj=payload_obj,
@@ -328,10 +345,8 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
             if attempt == 2:
                 raise TransientError("HTTP %d after retry" % e.code)
             continue
-        except (urllib.error.URLError, TimeoutError, OSError,
-                http.client.IncompleteRead) as e:
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
             trace("transport-error", payload_obj=payload_obj, attempt=attempt,
-                  raw=e.partial if isinstance(e, http.client.IncompleteRead) else None,
                   error="%s: %s" % (type(e).__name__, e))
             if attempt == 2:
                 raise TransientError("connection error after retry: %s" % e)

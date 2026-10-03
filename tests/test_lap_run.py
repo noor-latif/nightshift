@@ -252,6 +252,31 @@ class TestAddCostRows(unittest.TestCase):
         self.assertEqual(len(data["calls"]), 2)  # per-call count assertable
         self.assertEqual(data["total_usd"], 1.5)
 
+class TestFailedCallCostUnknown(unittest.TestCase):
+    """A failed call (no response at all, so no usage will ever arrive) must
+    still cost a row, marked cost_unknown — the billed spend is unknown, not
+    silently absent from the published table."""
+
+    def test_failed_call_records_cost_unknown_row(self):
+        def failing_chat(messages, model, **kw):
+            raise lap.agent.TransientError("stream died mid-body")
+
+        with FakeLapEnv("none") as env:
+            with unittest.mock.patch.object(lap.agent, "chat",
+                                            side_effect=failing_chat):
+                lap.run(FakeLapEnv.ISSUE)
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            result = json.load(f)
+        self.assertEqual(result["outcome"], "failure")
+        self.assertEqual(result["gate"], "gateway")
+        run_ids = sorted(os.listdir(os.path.join(env.base, "evidence")))
+        with open(os.path.join(env.base, "evidence", run_ids[-1], "cost.json")) as f:
+            cost = json.load(f)
+        self.assertEqual(len(cost["calls"]), 1)  # the failed call is not absent
+        self.assertEqual(cost["calls"][0]["role"], "implementer")
+        self.assertTrue(cost["calls"][0]["cost_unknown"])
+        self.assertEqual(cost["total_usd"], 0)
+
 
 class TestPromptViewSanity(unittest.TestCase):
     def test_implausibly_small_billed_prompt_is_durable_instrument_observation(self):

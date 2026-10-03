@@ -572,20 +572,25 @@ class Lap:
         if time.time() > self.deadline:
             raise LapTimeout("wall-clock budget %.0fs exceeded" % LAP_WALLCLOCK_LIMIT_S)
 
-    def add_cost(self, usage, role):
+    def add_cost(self, usage, role, *, cost_unknown=False):
         """One row per call, always: a dropped row silently undercounts
         published cost tables. Falsy usage (gateway sent no usage chunk)
         records usage=None, buyer_cost_micro=0, missing_usage=true — the
         row's existence proves the call happened; per-call count is
-        assertable. Raises CostCeilingExceeded (caught by run() →
-        gate='cost' lap failure) once the cumulative total passes
+        assertable. A call that FAILED (no response at all, so no usage
+        will ever arrive) records cost_unknown=true instead: its billed
+        spend is unknown, not zero. Raises CostCeilingExceeded (caught by
+        run() → gate='cost' lap failure) once the cumulative total passes
         COST_CEILING_USD — the whitepaper's ceiling is a real runtime
         gate, not a dead constant."""
         if usage:
             self.costs.append({"role": role, "usage": usage})
         else:
-            self.costs.append({"role": role, "usage": None,
-                                "buyer_cost_micro": 0, "missing_usage": True})
+            row = {"role": role, "usage": None,
+                   "buyer_cost_micro": 0, "missing_usage": True}
+            if cost_unknown:
+                row["cost_unknown"] = True
+            self.costs.append(row)
         total_usd = sum((c["usage"] or {}).get("buyer_cost_micro") or 0
                         for c in self.costs) / 1e6
         self._dump("cost.json", {
@@ -651,6 +656,16 @@ def run(issue):
     hb = threading.Thread(target=lap.heartbeat_loop, daemon=True)
     hb.start()
     lap.event("lap-start", issue=issue, run_id=lap.run_id)
+
+    def chat_or_cost_unknown(role, messages, model, **kw):
+        # A failed call still happened (and may still bill): record it as
+        # cost_unknown instead of silently omitting its row from cost.json.
+        try:
+            return agent.chat(messages, model, **kw)
+        except (agent.PermanentError, agent.TransientError):
+            lap.add_cost(None, role, cost_unknown=True)
+            raise
+
     # the cleanup path must hold the path even if worktree_for raises before
     # assignment (L-016): a skipped finally is how the crash loop started
     worktree = _worktree_path(issue)
@@ -675,13 +690,14 @@ def run(issue):
         files = checkout_files(worktree)
         prompt = _implementer_prompt(data, criteria, issue, files)
 
-        r = agent.chat([{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
-                       max_tokens=IMPLEMENTER_MAX_TOKENS,
-                       api=IMPLEMENTER_API,
-                       reasoning_effort=IMPLEMENTER_REASONING_EFFORT,
-                       max_tokens_field=IMPLEMENTER_MAX_TOKENS_FIELD,
-                       trace_dir=os.path.join(lap.evdir, "traces"),
-                       call_id="%s-implementer" % lap.run_id)
+        r = chat_or_cost_unknown(
+            "implementer", [{"role": "user", "content": prompt}], IMPLEMENTER_MODEL,
+            max_tokens=IMPLEMENTER_MAX_TOKENS,
+            api=IMPLEMENTER_API,
+            reasoning_effort=IMPLEMENTER_REASONING_EFFORT,
+            max_tokens_field=IMPLEMENTER_MAX_TOKENS_FIELD,
+            trace_dir=os.path.join(lap.evdir, "traces"),
+            call_id="%s-implementer" % lap.run_id)
         view_observation = prompt_view_discrepancy(files, r.get("usage"))
         if view_observation:
             lap.observations.append(view_observation)
@@ -725,15 +741,16 @@ def run(issue):
         with open(os.path.join(lap.evdir, "applied.diff"), "w") as f:
             f.write(branch_diff)
 
-        rev = agent.chat([{"role": "user", "content":
+        rev = chat_or_cost_unknown(
+            "reviewer", [{"role": "user", "content":
                           agent.reviewer_prompt(branch_diff, criteria,
                                                 files="\n".join(checkout_files(worktree)),
                                                 brief=design_brief_from(data["body"]))}],
-                         REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS,
-                         api=REVIEWER_API, reasoning_effort=REVIEWER_REASONING_EFFORT,
-                         max_tokens_field=REVIEWER_MAX_TOKENS_FIELD,
-                         trace_dir=os.path.join(lap.evdir, "traces"),
-                         call_id="%s-reviewer" % lap.run_id)
+            REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS,
+            api=REVIEWER_API, reasoning_effort=REVIEWER_REASONING_EFFORT,
+            max_tokens_field=REVIEWER_MAX_TOKENS_FIELD,
+            trace_dir=os.path.join(lap.evdir, "traces"),
+            call_id="%s-reviewer" % lap.run_id)
         lap.add_cost(rev["usage"], "reviewer")
         with open(os.path.join(lap.evdir, "review.txt"), "w") as f:
             f.write(rev["content"])

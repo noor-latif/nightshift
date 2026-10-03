@@ -2,6 +2,7 @@ import json
 import http.client
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -89,6 +90,39 @@ class TestChat(unittest.TestCase):
         got = chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
         self.assertEqual(got["content"], "OK")
         self.assertEqual(cut.calls, 1)
+        self.assertEqual(len(op.calls), 2)
+
+    def test_incomplete_read_records_typed_fault_with_partial_bytes(self):
+        # provider cut the SSE body mid-chunk: billed, nothing delivered.
+        # The typed fault carries the bytes actually read, elapsed time, the
+        # requested model and the stream id header, and the existing bounded
+        # retry still recovers.
+        class CutResp:
+            headers = {"x-request-id": "stream-abc"}
+
+            def read(self):
+                raise http.client.IncompleteRead(b"data: partial", 49443)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        op = FakeOpener([CutResp(), FakeResp(load("sse_stream.txt"))])
+        with tempfile.TemporaryDirectory() as td:
+            got = chat([{"role": "user", "content": "x"}], "glm-5.3-flash",
+                       api_key="k", opener=op, trace_dir=td, call_id="c1")
+            with open(os.path.join(td, "model-calls.jsonl")) as f:
+                rows = [json.loads(line) for line in f]
+        fault = [r for r in rows if r["phase"] == "stream-incomplete"]
+        self.assertEqual(len(fault), 1)
+        self.assertEqual(fault[0]["partial_bytes"], len(b"data: partial"))
+        self.assertEqual(fault[0]["requested_model"], "glm-5.3-flash")
+        self.assertEqual(fault[0]["stream_id"], "stream-abc")
+        self.assertEqual(fault[0]["attempt"], 1)
+        self.assertGreaterEqual(fault[0]["elapsed_s"], 0)
+        self.assertEqual(got["content"], "OK")  # retry semantics unchanged
         self.assertEqual(len(op.calls), 2)
 
     def test_key_in_header_not_in_url_or_error(self):
