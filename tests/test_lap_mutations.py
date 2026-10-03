@@ -409,6 +409,74 @@ class TestCreateMutations(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.dir, "app.py")).read(), "x = 2\n")
         self.assertEqual(open(os.path.join(self.dir, "index.html")).read(), "<p>ok</p>")
 
+    def test_glob_entry_authorizes_matching_create_end_to_end(self):
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["page*.js"]):
+            ok, detail, results = lap.apply_mutations(
+                [self.create("page.js", "console.log(1)\n")], self.dir)
+            self.assertTrue(ok, detail)
+            self.assertTrue(results[0]["applied"])
+            # the existing-file rejection applies to a glob-authorized name too
+            self.assertIn("already exists", lap._create_path_error("page.js", self.dir))
+        self.assertEqual(open(os.path.join(self.dir, "page.js")).read(),
+                         "console.log(1)\n")
+
+    def test_glob_entry_authorizes_subdirectory_path(self):
+        os.makedirs(os.path.join(self.dir, "assets"))
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["assets/*"]):
+            self.assertIsNone(lap._create_path_error("assets/logo.svg", self.dir))
+            m, err = lap.extract_mutations(
+                json.dumps([self.create("assets/logo.svg", "x")]), allowed_files=set())
+        self.assertIsNone(err)
+        self.assertEqual(m[0]["file"], "assets/logo.svg")
+
+    def test_glob_char_class_and_question_mark(self):
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["img[12].png", "page?.js"]):
+            self.assertIsNone(lap._create_path_error("img1.png", self.dir))
+            self.assertIsNone(lap._create_path_error("page1.js", self.dir))
+            self.assertIsNotNone(lap._create_path_error("img3.png", self.dir))
+            self.assertIsNotNone(lap._create_path_error("page10.js", self.dir))
+
+    def test_glob_entry_rejects_non_matching_path(self):
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["assets/*"]):
+            err = lap._create_path_error("evil.html", self.dir)
+            m, perr = lap.extract_mutations(
+                json.dumps([self.create("evil.html", "x")]), allowed_files=set())
+        self.assertIn("FACTORY_NEW_FILES", err)
+        self.assertIsNone(m)
+        self.assertIn("FACTORY_NEW_FILES", perr)
+
+    def test_glob_entry_still_rejects_dotdot_abs_and_backslash(self):
+        # '*' matches every one of these strings, so only the lexical gate
+        # stands between a pattern and an escape
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["assets/*", "*"]):
+            for bad in ("assets/../evil.html", "../evil.html", "/tmp/evil.html",
+                        "a\\b.html", "./evil.html", "assets//evil.html"):
+                self.assertIsNotNone(lap._create_path_error(bad, self.dir), bad)
+            ok, detail, _ = lap.apply_mutations(
+                [self.create("assets/../evil.html", "x")], self.dir)
+        self.assertFalse(ok)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "evil.html")))
+
+    def test_glob_entry_rejects_symlinked_parent_escape(self):
+        outside = tempfile.mkdtemp()
+        os.symlink(outside, os.path.join(self.dir, "link"))
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["link/*"]):
+            err = lap._create_path_error("link/evil.html", self.dir)
+        self.assertIn("outside the checkout", err)
+        self.assertEqual(os.listdir(outside), [])
+
+    def test_bare_star_authorizes_any_plain_relative_create(self):
+        # documented consequence: '*' crosses '/', so a bare '*' entry is the
+        # whole plain-relative create surface
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["*"]):
+            self.assertIsNone(lap._create_path_error("index.html", self.dir))
+            self.assertIsNone(lap._create_path_error("deep/nested/new.txt", self.dir))
+
+    def test_literal_entry_stays_exact(self):
+        with unittest.mock.patch.object(lap, "NEW_FILES", ["index.html"]):
+            self.assertIsNotNone(lap._create_path_error("index.html.bak", self.dir))
+            self.assertIsNotNone(lap._create_path_error("assets/logo.svg", self.dir))
+
 class TestLocalTaskFile(unittest.TestCase):
     """A trusted operator task file replaces gh for laps whose task is not a
     GitHub issue; malformed input must never reach a paid call."""

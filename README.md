@@ -59,7 +59,13 @@ it is not byte-for-byte the old behavior.
 - `FACTORY_NEW_FILES=<rel,rel>` — allowlist of plain relative paths the lap
   may create (a create mutation is
   `{"file":..., "create": true, "find": "", "replace": "<whole file>"}`);
-  escape/symlink/already-exists are rejected. Empty = edit-only.
+  escape/symlink/already-exists are rejected. An entry containing an fnmatch
+  glob character (`*`, `?`, `[`) is a pattern instead of one path, e.g.
+  `FACTORY_NEW_FILES=index.html,styles.css,page.js,assets/*` authorizes any
+  path matching those patterns. `*` also crosses `/`, so a bare `*` entry
+  authorizes any plain relative create. Glob entries are still plain relative
+  paths: `..` segments, absolute and `~` entries are rejected either way
+  (`assets/../*` never authorizes anything). Empty = edit-only.
 - `FACTORY_NATIVE_CONFIG=<json>` — trusted native commands:
   `{"verify": [[argv...], ...], "suite": [argv...], "prepare": [[argv...]],
   "task_kind": "bug|enhancement", "merge_mode": "auto|review"}`. The suite is

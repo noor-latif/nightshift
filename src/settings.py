@@ -118,8 +118,14 @@ TASK_FILE = os.environ.get("FACTORY_TASK_FILE", "")
 if TASK_FILE and not os.path.isabs(TASK_FILE):
     raise ValueError("FACTORY_TASK_FILE must be an absolute path")
 # Creation is opt-in and allowlisted from the launch env, never a candidate
-# file: only these exact relative paths may be created. Empty (default) =
-# no creation capability, so the historical edit-only contract is unchanged.
+# file: only these relative paths may be created. An entry containing an
+# fnmatch glob character (* ? [) is a pattern and authorizes every plain
+# relative path it matches (a bare '*' authorizes any of them). Empty
+# (default) = no creation capability, so the historical edit-only contract
+# is unchanged.
+# The lexical rules below are identical for literal and glob entries: the
+# glob characters are not path syntax, so '..' stays a rejected segment
+# even in a pattern ('assets/../*' can never be authorized).
 NEW_FILES = [p.strip() for p in os.environ.get("FACTORY_NEW_FILES", "").split(",") if p.strip()]
 for _p in NEW_FILES:
     if (os.path.isabs(_p) or _p.startswith("~") or "\\" in _p

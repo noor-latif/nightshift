@@ -15,6 +15,7 @@ writes a timeout result and exits (supervisor parks, never re-dispatches).
 """
 
 import difflib
+import fnmatch
 import glob
 import json
 import os
@@ -99,8 +100,9 @@ def _clear_implementer_feedback(issue):
 def _implementer_prompt(data, criteria, issue, files):
     prompt = agent.implementer_prompt(data, criteria, issue)
     if NEW_FILES:
-        prompt += ("\n\nNew files: these paths do not exist yet and are the ONLY "
-                   "paths you may create: %s. Create one with "
+        prompt += ("\n\nNew files: the ONLY paths you may create: %s (literal "
+                   "entries do not exist yet; entries with * ? [ are fnmatch "
+                   "patterns). Create one with "
                    '{"file": "<path>", "find": "", "replace": "<entire file '
                    'content>", "create": true}. Any other path is rejected.'
                    % ", ".join(NEW_FILES))
@@ -312,6 +314,25 @@ def extract_mutations(text, allowed_files=None):
     return None, first_err or "mutation-parse: no JSON payload found"
 
 
+_GLOB_CHARS = "*?["
+
+def _is_glob(entry):
+    """Is this FACTORY_NEW_FILES entry an fnmatch pattern (not a literal)?"""
+    return any(c in entry for c in _GLOB_CHARS)
+
+def _new_file_authorized(name):
+    """Is `name` inside the FACTORY_NEW_FILES create surface?
+
+    A literal entry authorizes that exact path (the fast path); an entry
+    containing fnmatch glob characters authorizes every path it matches.
+    This is membership only — the lexical, realpath-containment and
+    existence checks in _create_path_error apply either way, so a glob
+    never widens them (and a matched '..' segment is still rejected).
+    """
+    if name in NEW_FILES:
+        return True
+    return any(fnmatch.fnmatch(name, e) for e in NEW_FILES if _is_glob(e))
+
 def _mutation_shape_error(data, allowed_files):
     """Per-mutation shape check: dict, exactly string file/find/replace.
 
@@ -333,7 +354,7 @@ def _mutation_shape_error(data, allowed_files):
             if not isinstance(m[k], str):
                 return "mutation-parse: mutation %d field %r must be a string" % (i, k)
         if create:
-            if m["file"] not in NEW_FILES:
+            if not _new_file_authorized(m["file"]):
                 return ("mutation-parse: mutation %d creates %r which is not in "
                         "FACTORY_NEW_FILES" % (i, m["file"]))
             if m.get("find", ""):
@@ -443,7 +464,7 @@ def _create_path_error(name, worktree):
     path of the parent is resolved and required to stay inside the real
     worktree root.
     """
-    if name not in NEW_FILES:
+    if not _new_file_authorized(name):
         return "not in FACTORY_NEW_FILES"
     if (os.path.isabs(name) or "\\" in name
             or any(part in ("", ".", "..") for part in name.split("/"))):
@@ -798,8 +819,12 @@ def run(issue):
             return finish(lap, "failure", gate="verify", error=evidence)
         lap.event("verify-green")
         lap.check_clock()
+        # Only literal entries are promises ("create exactly these"); a glob
+        # entry is a create surface, so it is not required to have produced
+        # anything — a task that never needed it must not fail red here.
         missing_new = [n for n in NEW_FILES
-                       if not os.path.isfile(os.path.join(worktree, n))]
+                       if not _is_glob(n)
+                       and not os.path.isfile(os.path.join(worktree, n))]
         if missing_new:
             return finish(lap, "failure", gate="new-files",
                           error="required new files absent after verification: %s"

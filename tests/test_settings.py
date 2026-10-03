@@ -93,5 +93,25 @@ class TestNativeConfigBoundary(unittest.TestCase):
                                capture_output=True, text=True)
             self.assertNotEqual(r.returncode, 0, cfg)
 
+class TestNewFilesBoundary(unittest.TestCase):
+    """FACTORY_NEW_FILES is a create-surface boundary: glob entries are
+    accepted, but the plain-relative-path rules hold for patterns too."""
+
+    def _import(self, value):
+        import subprocess
+        env = dict(os.environ, FACTORY_NEW_FILES=value)
+        return subprocess.run([sys.executable, "-c", "import settings"],
+                              cwd=os.path.dirname(settings.__file__), env=env,
+                              capture_output=True, text=True)
+
+    def test_glob_entries_accepted(self):
+        r = self._import("index.html,styles.css,page.js,assets/*,*")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_escape_shaped_entries_rejected_even_with_glob_chars(self):
+        for bad in ("assets/../*", "../*", "/tmp/*", "~/*", "a\\*.py",
+                    "assets//*", "./*.py"):
+            self.assertNotEqual(self._import(bad).returncode, 0, bad)
+
 if __name__ == "__main__":
     unittest.main()
