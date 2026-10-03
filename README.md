@@ -35,7 +35,7 @@ clones/workspaces (`~/nightshift`, trial workspaces) are not it.
 
     cd ~/repos/factory-spike
     set -a; . env.sh; set +a          # export the lap env first (caller-owned)
-    scripts/run-lap.sh <issue-number> # detached; prints pid, log path, tail cmd
+    scripts/run-lap.sh <issue-number> # detached; prints lap pid, pidfile, log, progress/stop cmds
 
 Paid laps go through `scripts/run-lap.sh`, never a bare `python3 src/lap.py`:
 the launcher `setsid`+`nohup`s the child into its own session, so an agent
@@ -45,6 +45,23 @@ a lap mid-stream and the request still billed. The launcher sources nothing
 itself, so the caller MUST have exported the lap env first (as above). An
 optional second argument names the logfile (default
 `state/lap-<issue>-<timestamp>.log`).
+
+`setsid` forks (util-linux 2.42.2 forks even in the foreground, so `--fork`
+changes nothing), which means the launcher's own `$!` is a transient wrapper
+that is already gone while the lap runs and can neither be watched nor killed.
+The child therefore publishes its own pid: the setsid'd `bash -c` writes `$$`
+to `<logfile>.pid` (covered by the `*.pid` ignore rule) and then `exec`s the
+lap, so that pidfile holds the live lap process. The launcher prints that real
+pid and the working stop command `kill "$(cat <logfile>.pid)"`; it exits
+non-zero if the child never publishes a live pid.
+
+The logfile is crash capture only — `src/lap.py` writes nothing to stdout, so
+`tail -f <logfile>` is NOT live progress (it stays empty on a healthy lap).
+Progress lives in the evidence dir, `state/evidence/<timestamp>-issue-<n>/
+timeline.json` (one row per gate), and the terminal artifact is
+`state/lap-result.json`. To wait for the end:
+
+    while [ ! -s state/lap-result.json ]; do sleep 5; done; cat state/lap-result.json
 
 A fresh session gets the current behavior by running that path; nothing is
 inherited from another clone or from a previous session's environment. The
