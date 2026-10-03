@@ -33,7 +33,17 @@ This checkout, `~/repos/factory-spike`, is the canonical source. Other
 clones/workspaces (`~/nightshift`, trial workspaces) are not it.
 
     cd ~/repos/factory-spike
-    python3 src/lap.py <issue-number>
+    set -a; . env.sh; set +a          # export the lap env first (caller-owned)
+    scripts/run-lap.sh <issue-number> # detached; prints pid, log path, tail cmd
+
+Paid laps go through `scripts/run-lap.sh`, never a bare `python3 src/lap.py`:
+the launcher `setsid`+`nohup`s the child into its own session, so an agent
+command timeout kills the launcher, not the open model stream. **NEVER wrap a
+lap in a command with a short deadline** — a 300s command deadline once killed
+a lap mid-stream and the request still billed. The launcher sources nothing
+itself, so the caller MUST have exported the lap env first (as above). An
+optional second argument names the logfile (default
+`state/lap-<issue>-<timestamp>.log`).
 
 A fresh session gets the current behavior by running that path; nothing is
 inherited from another clone or from a previous session's environment. The
