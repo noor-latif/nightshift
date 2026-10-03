@@ -536,9 +536,15 @@ def apply_mutations(mutations, worktree):
         start = hay.index(needle)
         a = hay_idx[start]
         end = start + len(needle)
-        if needle.endswith("\n") and len(needle) > 1:
-            end -= 1  # the anchor's final newline is a line boundary, not
-                      # content: keep the file's own trailing bytes of that line
+        if (needle.endswith("\n") and len(needle) > 1
+                and hay_idx[end - 1] != hay_idx[end - 2] + 1):
+            # Step back only when the anchor's final newline is a line
+            # boundary the normalizer re-created: if the normalized index did
+            # not advance, source bytes were stripped before that newline
+            # (trailing whitespace / a CR in CRLF) and must be preserved.
+            # Otherwise the newline is anchor content — consuming it dropped
+            # the line break and corrupted the file (K3).
+            end -= 1
         b = hay_idx[end - 1] + 1
         contents[name] = text[:a] + m["replace"] + text[b:]
         row["applied"] = True

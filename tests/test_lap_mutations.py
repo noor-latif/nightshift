@@ -157,6 +157,17 @@ class TestApplyMutations(unittest.TestCase):
         self.assertEqual(open(os.path.join(self.dir, "app.py")).read(),
                          "def f():\n    return 2\n")
 
+    def test_newline_terminated_anchor_keeps_the_line_break(self):
+        # K3: find="A\nB\n" on "A\nB\nC\n" must replace exactly those two
+        # lines — the anchor's final newline is content, not a boundary.
+        with open(os.path.join(self.dir, "app.py"), "wb") as f:
+            f.write(b"A\nB\nC\n")
+        ok, detail, _ = lap.apply_mutations(
+            [mut("app.py", "A\nB\n", "X\n")], self.dir)
+        self.assertTrue(ok, detail)
+        with open(os.path.join(self.dir, "app.py"), "rb") as f:
+            self.assertEqual(f.read(), b"X\nC\n")
+
     def test_nothing_written_when_any_anchor_misses(self):
         ok, detail, _ = lap.apply_mutations(
             [mut("app.py", "x = 1", "x = 2"),
