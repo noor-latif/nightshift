@@ -3,8 +3,7 @@
 import os
 
 
-REPO_HOST = "nixlab"
-PRODUCT_REPO = os.environ.get("PRODUCT_REPO", "~/factory-lab/toy-product")  # remote path on REPO_HOST
+PRODUCT_REPO = os.environ.get("PRODUCT_REPO", "~/factory-lab/toy-product")  # local path: expanded and used as a local git cwd
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "noor-latif/toy-product")
 # "app" = boot + identity readback (toy-product); "none" = library repos with
 # nothing to deploy and no live rig to compare identity against.

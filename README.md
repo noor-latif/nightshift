@@ -22,10 +22,11 @@ under `docs/evidence/` (MANIFEST.md is the index).
 
     python3 -m unittest discover -s tests
 
-Python 3 stdlib only. No pip dependencies. The historical lap path still
-targets a remote host over ssh; local operator laps run the same entrypoint
-directly (below). Scope: time-boxed spike — issue → implement → verify →
-merge → deploy laps, zero human interventions, zero false greens.
+Python 3 stdlib only. No pip dependencies. There is one lap path: the
+supervisor and the lap run on the rig itself, so the deploy script is
+executed locally with `bash` — no ssh hop. Scope: time-boxed spike —
+issue → implement → verify → merge → deploy laps, zero human interventions,
+zero false greens.
 
 ## Local lap — canonical entrypoint
 

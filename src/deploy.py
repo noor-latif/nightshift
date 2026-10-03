@@ -1,23 +1,19 @@
-"""Deploy: ssh to REPO_HOST, reset product repo to origin/main, PID-file
-launch with FACTORY_PORT, bounded readiness, identity read-back.
+"""Deploy: generate the reset + PID-file launch script, then read the
+deployed identity back.
 
-Scripts are written to a temp file and scp'd — NEVER inline nested quotes
-through ssh (quoting layers silently change the command).
+The script is a standalone file (NEVER inline nested quotes): the supervisor
+runs on the rig itself, so lap.py executes it locally with bash — no ssh hop.
 """
 
 import json
-import os
 import subprocess
-import tempfile
 import urllib.request
 
 from settings import (
     FACTORY_PORT,
     PRODUCT_REPO,
     READY_TIMEOUT_S,
-    REPO_HOST,
 )
-
 
 def build_deploy_script(port=FACTORY_PORT, product_repo=PRODUCT_REPO,
                         pid_file="app.pid", ready_timeout=READY_TIMEOUT_S):
@@ -51,28 +47,9 @@ echo "NOT READY after {ready_timeout}s"
 exit 1
 """
 
-
-def run_remote(script, host=REPO_HOST, ssh="ssh", scp="scp"):
-    """Write script to temp file, scp it, run `ssh host bash script`."""
-    fd, path = tempfile.mkstemp(suffix=".sh")
-    with os.fdopen(fd, "w") as f:
-        f.write(script)
-    try:
-        subprocess.run([scp, path, "%s:/tmp/factory-deploy.sh" % host], check=True)
-        subprocess.run([ssh, host, "bash", "/tmp/factory-deploy.sh"], check=True)
-    finally:
-        os.unlink(path)
-    return True
-
-
-def deploy(host=REPO_HOST, port=FACTORY_PORT, **kwargs):
-    return run_remote(build_deploy_script(port=port, **kwargs), host)
-
-
 def read_health(host_url):
     with urllib.request.urlopen(host_url.rstrip("/") + "/health", timeout=10) as r:
         return json.loads(r.read())
-
 
 def identity_readback(host_url, repo_cwd, git="git"):
     """/health revision must equal the local main HEAD (deploy identity)."""
