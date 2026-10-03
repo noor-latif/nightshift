@@ -38,6 +38,7 @@ from settings import (
     CODE_PATHS,
     COST_CEILING_USD,
     DEPLOY_MODE,
+    DEPLOY_PORT,
     EVIDENCE_DIR,
     GITHUB_REPO,
     HEARTBEAT_PATH,
@@ -61,7 +62,6 @@ from settings import (
 )
 
 RESULT_PATH = os.path.join("state", "lap-result.json")
-LIVE_PORT = 8642  # the rig's live port; PID file below (task contract overrides default)
 LIVE_PID_FILE = "/tmp/toy-deploy.pid"
 
 
@@ -877,7 +877,7 @@ def run(issue):
         if DEPLOY_MODE == "none":
             lap.event("deploy-skip", mode=DEPLOY_MODE)
         else:
-            script = deploy.build_deploy_script(port=LIVE_PORT,
+            script = deploy.build_deploy_script(port=DEPLOY_PORT,
                                                 product_repo=os.path.expanduser(PRODUCT_REPO),
                                                 pid_file=LIVE_PID_FILE)
             fd, spath = tempfile.mkstemp(suffix=".sh")
@@ -890,7 +890,7 @@ def run(issue):
             lap.event("deploy", rc=d.returncode, tail=(d.stdout + d.stderr)[-300:])
             if d.returncode != 0:
                 return finish(lap, "failure", gate="deploy", error=(d.stdout + d.stderr)[-2000:])
-            ident = deploy.identity_readback("http://127.0.0.1:%d" % LIVE_PORT,
+            ident = deploy.identity_readback("http://127.0.0.1:%d" % DEPLOY_PORT,
                                              os.path.expanduser(PRODUCT_REPO))
             lap._dump("identity.json", ident)
             if not ident["match"]:

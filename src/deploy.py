@@ -10,12 +10,12 @@ import subprocess
 import urllib.request
 
 from settings import (
-    FACTORY_PORT,
+    DEPLOY_PORT,
     PRODUCT_REPO,
     READY_TIMEOUT_S,
 )
 
-def build_deploy_script(port=FACTORY_PORT, product_repo=PRODUCT_REPO,
+def build_deploy_script(port=DEPLOY_PORT, product_repo=PRODUCT_REPO,
                         pid_file="app.pid", ready_timeout=READY_TIMEOUT_S):
     """Full deploy script text: fetch+reset, PID-file kill, nohup start, readiness.
 
