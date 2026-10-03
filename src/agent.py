@@ -258,12 +258,14 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
     """Text call with existing retry policy; explicit compatible API route.
 
     max_tokens_field names the completions field carrying the output cap.
-    The historical literal is "max_tokens"; catalog entries whose compat
-    declares another field (the approved implementer declares
-    "max_completion_tokens") are driven by trusted per-role config. The
-    gateway documents both names as aliases, so this is configurability: the
-    observed empty completion was never established to be caused by the
-    field name (see lap-9001 evidence; the causal claim is retracted).
+    The historical literal is "max_tokens"; a role whose gateway expects the
+    alias is driven by trusted per-role config (the Surplus catalog declares
+    max_tokens for the reviewed models — see
+    factory-docs/GLM-IMPLEMENTER-TOKEN-CHECK_2026-10-03.md §2; it has no
+    maxTokensField key). The gateway documents both names as aliases, so this
+    is configurability: the observed empty completion was never established to
+    be caused by the field name (see lap-9001 evidence; the causal claim is
+    retracted).
 
     trace_dir set → every actual attempt (request payload, response body,
     allowlisted headers, HTTP errors, transport errors, mid-stream cuts as a

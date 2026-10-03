@@ -22,11 +22,13 @@ SURPLUS_API_KEY_ENV = "SURPLUS_INTELLIGENCE_API_KEY"  # key never hardcoded, nev
 HTTP_TIMEOUT_S = int(os.environ.get("FACTORY_HTTP_TIMEOUT_S", "120"))
 MIN_MAX_TOKENS = 512  # reasoning models eat budget; below this content can come back null
 # Some catalog entries declare a different completions field for the output
-# cap (the Surplus catalog records maxTokensField "max_completion_tokens" for
-# the approved implementer). The gateway documents max_tokens and
-# max_completion_tokens as aliases, so this is trusted per-role
-# configurability, not a claimed root cause of an empty completion. The
-# default keeps the historical wire shape for every other model.
+# cap. Per factory-docs/GLM-IMPLEMENTER-TOKEN-CHECK_2026-10-03.md §2 the
+# Surplus catalog declares max_tokens for the reviewed models (glm-5.3-flash
+# lists max_tokens; the catalog has no maxTokensField key at all — the earlier
+# "max_completion_tokens" note referred to cached OMP metadata). The gateway
+# documents max_tokens and max_completion_tokens as aliases, so this is
+# trusted per-role configurability, not a claimed root cause of an empty
+# completion. The default keeps the historical wire shape for every other model.
 IMPLEMENTER_MAX_TOKENS_FIELD = os.environ.get("IMPLEMENTER_MAX_TOKENS_FIELD", "max_tokens")
 REVIEWER_MAX_TOKENS_FIELD = os.environ.get("REVIEWER_MAX_TOKENS_FIELD", "max_tokens")
 IMPLEMENTER_MODEL = os.environ.get("IMPLEMENTER_MODEL", "gpt-6-luna")

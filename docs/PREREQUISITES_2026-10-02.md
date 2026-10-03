@@ -173,11 +173,14 @@ create, native enhancement baseline + suite, reviewer design context, review
 stop — passes against a localhost fixture; evidence and hashes are in
 `~/repos/factory-docs/kormotorn-trial/FRESH-RUN-INTEGRATION.md`.
 
-Comment correction: the catalog declares `maxTokensField
-"max_completion_tokens"` for the approved implementer, and the gateway
-documents `max_tokens`/`max_completion_tokens` as aliases, so the earlier
-"wrong field causes an empty completion" causal claim is retracted; the knob is
-per-role configurability, not a proven root cause.
+Comment correction (revised 2026-10-03): the Surplus catalog declares
+`max_tokens` for the reviewed models and has **no `maxTokensField` key at all**
+— the earlier "maxTokensField \"max_completion_tokens\"" note referred to
+cached OMP metadata, not this catalog (see
+`~/repos/factory-docs/GLM-IMPLEMENTER-TOKEN-CHECK_2026-10-03.md` §2, live
+catalog fetch). The gateway documents `max_tokens`/`max_completion_tokens` as
+aliases, so the earlier "wrong field causes an empty completion" causal claim
+is retracted; the knob is per-role configurability, not a proven root cause.
 
 ## Known limits
 
