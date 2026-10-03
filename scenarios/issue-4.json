@@ -16,7 +16,7 @@
    "argv": [
     "python3",
     "-c",
-    "import os, sys\nos.environ['FACTORY_RUNTIME_CANDIDATE'] = 'x'\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\nsc = {'name': 'leak', 'assertions': [{'method': 'GET', 'url': 'http://127.0.0.1:{{port}}/health', 'expected_status': 200}]}\nr = verify.run_scenario(sc, os.getcwd(), '/tmp/unused.pid')\nassert r['verdict'] == 'hold', r\nprint('K4-C2-GREEN')\n"
+    "import os, sys\nos.environ['FACTORY_RUNTIME_CANDIDATE'] = 'x'\nos.environ['DEPLOY_MODE'] = 'none'\nsys.path.insert(0, 'src')\nimport verify\nsc = {'name': 'leak', 'assertions': [{'method': 'GET', 'url': 'http://127.0.0.1:{{port}}/health', 'expected_status': 200}]}\nr = verify.run_scenario(sc, os.getcwd(), '/tmp/unused.pid')\nassert r['verdict'] == 'HOLD', r\nprint('K4-C2-GREEN')\n"
    ],
    "expected_exit": 0,
    "expect_stdout_fragment": "K4-C2-GREEN"

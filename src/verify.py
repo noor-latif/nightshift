@@ -333,7 +333,7 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
     if PROVENANCE_ENV in os.environ:
         results["checks"].append({"assertion": "provenance", "status": "HOLD",
                                   "detail": "%s is set" % PROVENANCE_ENV})
-        results["verdict"] = "hold"
+        results["verdict"] = "HOLD"
         return results
     # a scenario whose assertions are ALL exec-kind has nothing to boot and
     # needs no port — repos with no app.py run their oracle as plain argv
@@ -342,7 +342,7 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
             results["checks"].append(evaluate_exec_assertion(a, checkout_cwd))
         results["verdict"] = (
             "pass" if all(c["status"] == "pass" for c in results["checks"]) and results["checks"]
-            else ("hold" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")
+            else ("HOLD" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")
         )
         return results
     port = free_port(port)
@@ -377,7 +377,7 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
             shutil.rmtree(tmp_boot, ignore_errors=True)
     results["verdict"] = (
         "pass" if all(c["status"] == "pass" for c in results["checks"]) and results["checks"]
-        else ("hold" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")
+        else ("HOLD" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")
     )
     return results
 
