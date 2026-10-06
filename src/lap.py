@@ -10,7 +10,8 @@ via the launch env; see src/settings.py) — no model names live in code.
 
 Evidence per SPIKE_PROD.md S8: state/evidence/<run-id>/ holds timeline.json,
 cost.json, verdict.json, implementer_raw.txt, claimed.json, mutations.json,
-applied.diff, review.txt, verify.json, merge.json, identity.json.
+applied.diff, review.txt, review-verdicts.json, verify.json, merge.json,
+identity.json.
 
 Liveness: heartbeat touched every 10s; wall-clock breach past the budget
 writes a timeout result and exits (supervisor parks, never re-dispatches).
@@ -667,7 +668,12 @@ def finish(lap, outcome, gate=None, error=None, caught=None, extra=None):
     extra lands in both artifacts: terminal facts a supervisor/reviewer needs
     to find without reading the evidence dir (e.g. a retained candidate)."""
     observations = getattr(lap, "observations", [])
-    verdict = {"verdict": "pass" if outcome in ("success", "success-close-failed", "awaiting-review") else "fail", "outcome": outcome}
+    # three artefact classes, not two: an abstain is neither a pass nor a
+    # failure (reject in a metric) — see selector.OUTCOMES.
+    verdict_class = {"abstain": "abstain"}.get(
+        outcome,
+        "pass" if outcome in ("success", "success-close-failed", "awaiting-review") else "fail")
+    verdict = {"verdict": verdict_class, "outcome": outcome}
     if gate:
         verdict["gate"] = gate
     if observations:
@@ -684,6 +690,44 @@ def finish(lap, outcome, gate=None, error=None, caught=None, extra=None):
     lap.set_result(outcome, error=verdict.get("error"), gate=gate,
                    observations=observations, extra=extra)
     lap.event("lap-end", outcome=outcome, gate=gate)
+
+
+def review_verdict(content):
+    """The reviewer's verdict class, lowercased, or None if unparseable.
+
+    Anchoring is deliberately unchanged from the pre-P3 kernel: re.search
+    (FIRST match anywhere in the text), no ^/$/\\Z, \\s* after the colon,
+    case-insensitive. Pre-existing hazard, carried knowingly (design §3.4):
+    a review that echoes the instruction line "VERDICT: accept|reject|abstain"
+    captures that echo's class instead of the final line's. Fixing it (last
+    match) is the owner's call, not part of this change."""
+    m = re.search(r"VERDICT:\s*(accept|reject|abstain)", content, re.I)
+    return m.group(1).lower() if m else None
+
+
+_EVIDENCE_LINE = re.compile(r"^\s*[-*]?\s*EVIDENCE:\s*(.*)$", re.I)
+
+
+def review_table(content, verdict_class):
+    """Machine-readable per-criterion table derived from the review prose.
+
+    review.txt stays the authoritative raw table; this derived copy is what
+    makes an accuracy metric (incl. abstain_rate) recomputable without
+    re-reading prose (Rao & Callison-Burch 2026, design §3.2)."""
+    criteria = []
+    evidence = None
+    for line in content.splitlines():
+        m = _EVIDENCE_LINE.match(line)
+        if m:
+            evidence = m.group(1).strip()
+            continue
+        if evidence is not None and line.strip().upper().startswith("JUDGMENT:"):
+            criteria.append({"evidence": evidence,
+                             "judgment": line.split(":", 1)[1].strip().upper()})
+            evidence = None
+    return {"verdict_class": verdict_class, "criteria": criteria,
+            "evidence_none_count": sum(1 for c in criteria
+                                       if c["evidence"].lower() == "none")}
 
 
 def run(issue):
@@ -796,8 +840,29 @@ def run(issue):
             return finish(lap, "failure", gate="review",
                           error="reviewer completion truncated at output limit",
                           caught="reviewer completion truncated (finish_reason=length)")
-        verdict_m = re.search(r"VERDICT:\s*(accept|reject)", rev["content"], re.I)
-        if not verdict_m or verdict_m.group(1).lower() != "accept":
+        verdict = review_verdict(rev["content"])
+        lap._dump("review-verdicts.json",
+                  review_table(rev["content"], verdict or "unparseable"))
+        if verdict == "abstain":
+            # Terminal escalation, not a failure (P3 design §3.2): the reviewer
+            # could not decide from the provided material. No retry — the only
+            # retry the harness has re-runs the whole lap, implementer included,
+            # to re-ask a question the reviewer just answered "insufficient
+            # evidence". Retain the candidate under the reject retention
+            # namespace and park it for owner review.
+            commit = _git(["rev-parse", "HEAD"], worktree)
+            repo = os.path.abspath(os.path.expanduser(PRODUCT_REPO))
+            ref = "refs/heads/rejected/%s" % lap.run_id
+            _git(["update-ref", ref, commit, "0" * 40], repo)
+            abstained = {"verdict": "abstain", "commit": commit, "ref": ref,
+                         "repository": repo,
+                         "inspect_argv": ["git", "-C", repo, "show", commit]}
+            lap._dump("abstained.json", abstained)
+            lap.event("review-abstain", verdict="abstain", commit=commit, ref=ref)
+            return finish(lap, "abstain", gate="review",
+                          error="reviewer abstained: no criterion failed, evidence insufficient",
+                          extra={"abstained_candidate": abstained})
+        if verdict != "accept":
             # A rejected candidate is still real work: retain it under its own
             # ref (the agent branch survives cleanup, but nothing points at
             # it) and record verdict + sha in the run's artifacts, so the
@@ -806,17 +871,17 @@ def run(issue):
             repo = os.path.abspath(os.path.expanduser(PRODUCT_REPO))
             ref = "refs/heads/rejected/%s" % lap.run_id
             _git(["update-ref", ref, commit, "0" * 40], repo)
-            rejected = {"verdict": "reject" if verdict_m else "unparseable",
+            rejected = {"verdict": verdict or "unparseable",
                         "commit": commit, "ref": ref, "repository": repo,
                         "inspect_argv": ["git", "-C", repo, "show", commit]}
             lap._dump("rejected.json", rejected)
             lap.event("review-reject", verdict=rejected["verdict"],
                       commit=commit, ref=ref)
             return finish(lap, "failure", gate="review",
-                          caught=("reviewer rejected the diff" if verdict_m
+                          caught=("reviewer rejected the diff" if verdict
                                   else "reviewer gave no parseable verdict"),
                           extra={"rejected_candidate": rejected})
-        lap.event("review-accept")
+        lap.event("review-accept", verdict="accept")
         lap.check_clock()
         pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
         evidence = verify.verify_candidate(

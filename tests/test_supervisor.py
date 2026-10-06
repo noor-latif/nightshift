@@ -356,6 +356,29 @@ supervisor.main()
         self.assertNotIn("BLOCKED:21", events)
         self.assertTrue(any(e.startswith("DRAIN") for e in events), events)
 
+    def test_abstain_lap_end_releases_claim_notifies_and_drains(self):
+        # P3: an abstain is an escalation, not a failure — the claim is
+        # released, the owner is told in plain words (never the generic
+        # "ABSTAIN (…)" uppercase-failure phrasing), and the disposition is
+        # terminal so the next idle tick DRAINs instead of reporting BLOCKED.
+        deps = fake_deps(self.tmp, self.notify, claim_result=None)
+        state = supervisor.load_state(os.path.join(self.tmp, "state.json"))
+        claim_path = os.path.join(self.tmp, "issue-42.json")
+        with open(claim_path, "w") as f:
+            f.write("{}")
+        state["lap"] = {"issue": 42, "claim_path": claim_path, "started_at": self.now}
+        disposition, _halt = supervisor.handle_lap_end(state, "abstain", self.now, deps)
+        self.assertEqual(disposition, "abstain")
+        self.assertEqual(state["issues"]["42"]["disposition"], "abstain")
+        self.assertFalse(os.path.exists(claim_path))
+        self.assertEqual(self.notify,
+                         ["lap issue 42: reviewer abstained, owner review required"])
+        self.assertIsNone(state["lap"])
+        events = supervisor.tick(state, self.now, deps)
+        self.assertIn("dispatch:idle", events)
+        self.assertNotIn("BLOCKED:42", events)
+        self.assertTrue(any(e.startswith("DRAIN") for e in events), events)
+
     def test_blocked_exit_nonzero_drained_exit_zero(self):
         # main-loop: BLOCKED -> exit 1; DRAIN -> clean break (exit 0)
         def run_main(events):

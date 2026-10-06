@@ -112,6 +112,7 @@ class TestSelector(unittest.TestCase):
             "success": "merged",
             "queue-empty": "idle",
             "timeout": "timeout-park",
+            "abstain": "abstain",
         }
         for outcome, want in cases.items():
             st = {}
@@ -125,6 +126,18 @@ class TestSelector(unittest.TestCase):
         st = {}
         selector.handle_outcome("crash", 8, st, NOW)
         self.assertEqual(st["issues"]["8"]["retries"], 1)
+
+    def test_abstain_is_terminal_and_never_consumes_retry_budget(self):
+        # P3: an abstain escalates to the owner — it must never reach the
+        # failure retry ladder (a whole-lap re-run re-asks a settled question)
+        # and its disposition must be terminal so dispatch never re-claims it.
+        st = {}
+        self.assertEqual(selector.handle_outcome("abstain", 7, st, NOW), "abstain")
+        self.assertEqual(st["issues"]["7"], {"retries": 0, "disposition": "abstain"})
+        self.assertIn("abstain", selector.TERMINAL_DISPOSITIONS)
+        # replaying it must not accumulate retries and must stay terminal
+        self.assertEqual(selector.handle_outcome("abstain", 7, st, NOW), "abstain")
+        self.assertEqual(st["issues"]["7"], {"retries": 0, "disposition": "abstain"})
 
     def test_unknown_outcome_raises_never_falls_through(self):
         with self.assertRaises(ValueError):

@@ -12,11 +12,13 @@ import time
 from settings import CLAIMS_DIR, LAP_WALLCLOCK_LIMIT_S, RETRY_BUDGET
 
 OUTCOMES = ("success", "success-close-failed", "failure", "timeout", "crash", "queue-empty",
-            "apply_incomplete", "awaiting-review")
+            "apply_incomplete", "awaiting-review", "abstain")
 # Dispositions that are final: never re-claimed, never retried. awaiting-review
 # is terminal-by-design (review mode: the owner merge decision is pending), so
-# the supervisor must not read it as a blocked queue either.
-TERMINAL_DISPOSITIONS = ("parked", "timeout-park", "merged", "awaiting-review")
+# the supervisor must not read it as a blocked queue either. abstain is the
+# same class: the reviewer could not decide from the provided material, so a
+# whole-lap re-run (implementer included) would re-ask a settled question.
+TERMINAL_DISPOSITIONS = ("parked", "timeout-park", "merged", "awaiting-review", "abstain")
 
 
 def _gh(args, repo, gh="gh"):
@@ -128,6 +130,13 @@ def handle_outcome(outcome, issue, state, now):
         return "awaiting-review"
     if outcome == "queue-empty":
         return "idle"
+    if outcome == "abstain":
+        # Reviewer escalation, not an implementer failure: terminal like
+        # awaiting-review. Deliberately does NOT touch rec["retries"] — an
+        # abstain must never consume the failure retry budget and must never
+        # reach the retry path below (P3 design §3.2).
+        rec["disposition"] = "abstain"
+        return "abstain"
     if outcome == "timeout":
         rec["disposition"] = "timeout-park"  # never re-dispatch a timed-out lap
         return "timeout-park"

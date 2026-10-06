@@ -12,16 +12,40 @@ acceptance criteria:
 current file contents (candidate state, post-apply):
 {{files}}
 
-For each criterion: PASS or FAIL with one-line evidence from the diff or the
-current file contents. Criteria about code the diff does not touch must be
-checked against the provided current file contents; unchanged code retains
-its existing behavior — never fail a criterion merely because the diff
-doesn't touch that path. Criteria of the form "existing tests pass" or other
-empirical runtime facts are verified by a later automated stage that runs the
-full test suite against this exact candidate state; mark them PASS when the
-diff and file contents show no plausible breakage of existing behavior, and
-FAIL only when you can point to the line where the change breaks an existing
-tested behavior. Still fail closed on any criterion this context genuinely
-cannot verify.
+Work criterion by criterion. For each criterion emit exactly two lines, in this
+order — the evidence line FIRST, the judgment line SECOND:
 
-Verdict line must be exactly: VERDICT: accept|reject
+EVIDENCE: <one verbatim quote, copied character-for-character from the diff or
+from the current file contents above, that decides this criterion> — or
+literally `EVIDENCE: none` when no text in the provided material decides it.
+JUDGMENT: PASS | FAIL | UNVERIFIABLE
+
+Rules for that pair:
+- The quote must be verbatim from the provided material. Never paraphrase, and
+  never cite a file name or line number in place of the quote.
+- UNVERIFIABLE is allowed ONLY on a criterion whose evidence line is exactly
+  `EVIDENCE: none`. A criterion with a deciding quote is PASS or FAIL.
+- PASS requires the quote to show the criterion holds. FAIL requires the quote
+  to show the line where the criterion is broken.
+- Criteria about code the diff does not touch must be checked against the
+  provided current file contents; unchanged code retains its existing
+  behavior — never fail a criterion merely because the diff doesn't touch that
+  path.
+- Criteria of the form "existing tests pass" or other empirical runtime facts
+  are verified by a later automated stage that runs the full test suite
+  against this exact candidate state; mark them PASS when the diff and file
+  contents show no plausible breakage of existing behavior, and FAIL only when
+  you can point to the line where the change breaks an existing tested
+  behavior.
+- Do not suggest repairs and do not explain what should be fixed. Report only
+  what the provided evidence shows about this candidate as it stands.
+
+Last line of your review, exactly:
+VERDICT: accept|reject|abstain
+
+Choose that verdict from the judgments above:
+- accept — every criterion is PASS.
+- reject — at least one criterion is FAIL, each backed by its deciding quote.
+- abstain — no criterion FAILs and at least one criterion is UNVERIFIABLE
+  (its evidence line is `EVIDENCE: none`). Abstain is the honest answer when
+  the provided material cannot decide; it is not a rejection.

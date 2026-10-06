@@ -234,7 +234,8 @@ def handle_lap_end(state, outcome, now, deps):
     runtime_log("lap-check", issue=issue, observed=observed)
     if observed:
         runtime_log("intervention", issue=issue, detail=observed)
-    if disposition in ("retry", "merged", "parked", "timeout-park", "awaiting-review"):
+    if disposition in ("retry", "merged", "parked", "timeout-park", "awaiting-review",
+                       "abstain"):
         # retry: release so the retry re-acquires the same issue.
         # merged/parked/timeout-park are TERMINAL: the claim file is removed
         # here too — launch-4/launch-2 finding: leaving it made reconcile
@@ -252,6 +253,10 @@ def handle_lap_end(state, outcome, now, deps):
         notify_fn("lap issue %d: GREEN (issue close failed)" % issue)
     elif outcome == "awaiting-review":
         notify_fn("lap issue %d: gates green, awaiting owner review" % issue)
+    elif outcome == "abstain":
+        # Escalation, not a failure: the generic branch below would announce
+        # it as an uppercase failure (the metric conflation P3 forbids).
+        notify_fn("lap issue %d: reviewer abstained, owner review required" % issue)
     else:
         notify_fn("lap issue %d: %s (%s)" % (issue, outcome.upper(), disposition))
     state["lap"] = None

@@ -381,6 +381,43 @@ def _patch_verify_recorder(recorder):
     return unittest.mock.patch.object(verify, "verify_candidate",
                                      side_effect=recorder)
 
+class TestReviewVerdictParsing(unittest.TestCase):
+    """P3: the verdict line carries three classes, and the per-criterion table
+    is derived from the evidence lines the prompt orders BEFORE each judgment."""
+
+    def test_all_three_classes_parse(self):
+        for cls in ("accept", "reject", "abstain"):
+            self.assertEqual(lap.review_verdict("prose\nVERDICT: %s\n" % cls), cls)
+
+    def test_case_insensitive_and_unparseable_is_none(self):
+        self.assertEqual(lap.review_verdict("VERDICT:  ABSTAIN"), "abstain")
+        self.assertIsNone(lap.review_verdict("no verdict line here"))
+
+    def test_first_match_wins_the_echoed_instruction_hazard_is_unchanged(self):
+        # Design §3.4: re.search returns the FIRST match, so a review echoing
+        # the instruction line captures the echo's class rather than the final
+        # line's. Pre-existing, deliberately unchanged by P3 (owner's call to
+        # harden) — pinned here so any change to it is a deliberate one.
+        text = "Last line must be VERDICT: accept|reject|abstain\n\nVERDICT: reject"
+        self.assertEqual(lap.review_verdict(text), "accept")
+
+    def test_review_table_pairs_evidence_with_judgment(self):
+        text = ("EVIDENCE: x = 2\nJUDGMENT: PASS\n"
+                "EVIDENCE: none\nJUDGMENT: UNVERIFIABLE\n")
+        table = lap.review_table(text, "abstain")
+        self.assertEqual(table["verdict_class"], "abstain")
+        self.assertEqual(table["criteria"],
+                         [{"evidence": "x = 2", "judgment": "PASS"},
+                          {"evidence": "none", "judgment": "UNVERIFIABLE"}])
+        self.assertEqual(table["evidence_none_count"], 1)
+
+    def test_review_table_keeps_colons_inside_a_verbatim_quote(self):
+        text = "EVIDENCE: body = {\"error\": \"not found\"}\nJUDGMENT: PASS\n"
+        table = lap.review_table(text, "accept")
+        self.assertEqual(table["criteria"][0]["evidence"],
+                         'body = {"error": "not found"}')
+
+
 class TestLocalReviewSnapshot(unittest.TestCase):
     def test_snapshot_survives_cleanup_without_merge_or_close(self):
         with FakeLapEnv("none") as env, \
@@ -429,6 +466,48 @@ class TestLocalReviewSnapshot(unittest.TestCase):
         self.assertEqual(git(env.repo, "show", rejected["ref"] + ":app.py"), "x = 2\n")
         with open(os.path.join(result["evidence_dir"], "rejected.json")) as f:
             self.assertEqual(json.load(f)["commit"], rejected["commit"])
+
+    def test_abstained_candidate_is_terminal_escalation_not_reject_or_retry(self):
+        # P3: abstain is its own terminal class — no merge, no verify, no
+        # close; the candidate is retained under the reject retention
+        # namespace, and the verdict class is recorded as abstain (never
+        # accept, and never collapsed into "fail").
+        def abstaining_chat(messages, model, **kw):
+            if model == lap.IMPLEMENTER_MODEL:
+                content = json.dumps([{"file": "app.py", "find": "x = 1",
+                                       "replace": "x = 2"}])
+            else:
+                content = ("EVIDENCE: none\nJUDGMENT: UNVERIFIABLE\n"
+                           "VERDICT: abstain")
+            return {"content": content, "finish_reason": "stop",
+                    "usage": {"buyer_cost_micro": 1000}}
+
+        with FakeLapEnv("none") as env, \
+             unittest.mock.patch.object(lap, "MERGE_MODE", "review"), \
+             unittest.mock.patch.object(lap.agent, "chat", side_effect=abstaining_chat), \
+             unittest.mock.patch.object(lap.merge, "full_merge", side_effect=AssertionError("must not merge")), \
+             unittest.mock.patch.object(lap.verify, "verify_candidate", side_effect=AssertionError("must not verify")), \
+             unittest.mock.patch.object(lap, "_gh", side_effect=AssertionError("must not close")):
+            lap.run(env.ISSUE)
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            result = json.load(f)
+        self.assertEqual(result["outcome"], "abstain")
+        self.assertEqual(result["gate"], "review")
+        abstained = result["abstained_candidate"]
+        self.assertEqual(abstained["verdict"], "abstain")
+        self.assertFalse(os.path.exists(env.worktree))
+        self.assertEqual(git(env.repo, "show", abstained["ref"] + ":app.py"), "x = 2\n")
+        evdir = result["evidence_dir"]
+        with open(os.path.join(evdir, "abstained.json")) as f:
+            self.assertEqual(json.load(f)["verdict"], "abstain")
+        with open(os.path.join(evdir, "verdict.json")) as f:
+            self.assertEqual(json.load(f)["verdict"], "abstain")  # not "fail"
+        with open(os.path.join(evdir, "review-verdicts.json")) as f:
+            self.assertEqual(json.load(f)["verdict_class"], "abstain")
+        events = [e["event"] for e in env.timeline()]
+        self.assertIn("review-abstain", events)
+        self.assertNotIn("review-accept", events)
+        self.assertNotIn("review-reject", events)
 
     def test_bad_enhancement_baseline_prevents_model_call(self):
         with FakeLapEnv("none") as env, \

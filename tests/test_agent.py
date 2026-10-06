@@ -265,6 +265,24 @@ class TestReviewerPrompt(unittest.TestCase):
         self.assertIn("unchanged code retains its existing behavior", flat)
 
 
+    def test_mec_ordering_and_three_class_verdict_in_prompt(self):
+        # P3 §3.1: evidence line first, judgment second; three verdict classes.
+        p = reviewer_prompt("+x = 2", "x is set")
+        flat = " ".join(p.split())
+        self.assertIn("the evidence line FIRST, the judgment line SECOND", flat)
+        self.assertIn("VERDICT: accept|reject|abstain", p)
+        self.assertIn("EVIDENCE: none", p)
+        # no repair/explanation demands (the overcorrection trap, §1)
+        self.assertIn("Do not suggest repairs", flat)
+
+    def test_brief_injection_literal_block_survives_the_rewrite(self):
+        # agent.py string-replaces this exact two-line block to inject the
+        # design brief; any whitespace change silently disables injection.
+        p = reviewer_prompt("+x = 2", "x is set", brief="keep it boring")
+        self.assertIn("design brief the implementation was given:\nkeep it boring", p)
+        self.assertIn("acceptance criteria:\nx is set", p)
+        self.assertNotIn("{{", p)  # every template variable was substituted
+
 class TestSanitizedTrace(unittest.TestCase):
     def test_recursive_json_sse_embedded_secrets_and_actual_usage(self):
         import agent
