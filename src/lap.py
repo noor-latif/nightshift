@@ -1,10 +1,12 @@
 """Lap: one issue through the full chain (the wiring between the six modules).
 
 Runs as a child process of supervisor.py: `python3 src/lap.py <issue>`.
-Chain: worktree from origin/main -> implementer (deepseek) -> apply diff ->
-reviewer (glm, fresh context) -> verify ladder -> squash merge -> deploy ->
+Chain: worktree from origin/main -> implementer -> apply diff ->
+reviewer (fresh context) -> verify ladder -> squash merge -> deploy ->
 identity read-back -> close issue. Red anywhere = failure outcome with
 per-gate evidence; the supervisor retries/parks per selector budget.
+Model role pins are runtime configuration (IMPLEMENTER_MODEL/REVIEWER_MODEL
+via the launch env; see src/settings.py) — no model names live in code.
 
 Evidence per SPIKE_PROD.md S8: state/evidence/<run-id>/ holds timeline.json,
 cost.json, verdict.json, implementer_raw.txt, claimed.json, mutations.json,
