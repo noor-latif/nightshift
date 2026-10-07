@@ -126,6 +126,23 @@ if TASK_KIND not in ("bug", "enhancement") or MERGE_MODE not in ("auto", "review
     raise ValueError("FACTORY_NATIVE_CONFIG: task_kind must be bug|enhancement, merge_mode must be auto|review")
 TRACE_HEADER_ALLOWLIST = ["content-type", "request-id", "x-request-id", "x-ratelimit-remaining-requests",
                           "x-ratelimit-reset-requests", "retry-after"]
+# --- qualify (per-repo build/test distillation, src/qualify.py) ---
+# The qualifier is a THIRD role: it proposes argv, it never decides pass/fail
+# (the deterministic checks and the dry-runs do). Its call is opt-in behind
+# `--agent`, so a default run makes zero model calls. Same env-override shape
+# as the other roles; no model name is hardcoded here.
+QUALIFIER_MODEL = os.environ.get("QUALIFIER_MODEL", "glm-5.3-flash")
+QUALIFIER_MAX_TOKENS = int(os.environ.get("QUALIFIER_MAX_TOKENS", "16384"))
+QUALIFIER_REASONING_EFFORT = os.environ.get("QUALIFIER_REASONING_EFFORT", "high")
+QUALIFIER_API = os.environ.get("QUALIFIER_API", "openai-completions")
+# Recipe store: operator-side by construction. The kernel reads the gate config
+# from the LAUNCH ENV (FACTORY_NATIVE_CONFIG above), never from the checkout, so
+# a recipe inside the candidate repo could point verify at /bin/true. The store
+# is the trust anchor; `--in-repo` publishes a byte-identical copy for readers.
+RECIPES_DIR = os.environ.get("NIGHTSHIFT_RECIPES_DIR", "~/nightshift/recipes")
+# Fail loud like COST_CEILING_USD: a qualify pass that would exceed this stops
+# rather than silently burning a long repair loop.
+QUALIFY_COST_CEILING_USD = float(os.environ.get("QUALIFY_COST_CEILING_USD", "0.01"))
 # --- local trusted task input + explicit new-file creation (Körmotorn local trial) ---
 # The task file is an operator-provided, read-only artifact OUTSIDE the
 # candidate checkout; when set, the lap reads the issue text from it instead
