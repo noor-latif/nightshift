@@ -707,6 +707,19 @@ def review_verdict(content):
 
 _EVIDENCE_LINE = re.compile(r"^\s*[-*]?\s*EVIDENCE:\s*(.*)$", re.I)
 
+# Reviewers sometimes emit the pair on one line instead of the two lines the
+# prompt orders ("EVIDENCE: <quote> — JUDGMENT: PASS", measured in R3 of the
+# p3-matrix rerun). Only the pair's trailing form counts, so evidence text that
+# merely contains a dash is never split. The separator observed in real reviews
+# is an em-dash surrounded by spaces; a spaced ASCII hyphen is accepted as the
+# same shape.
+_INLINE_JUDGMENT = re.compile(
+    r"\s+[—\-]\s+JUDGMENT:\s*(PASS|FAIL|UNVERIFIABLE)\s*$", re.I)
+
+# The reviewer prompt's own template line starts with this placeholder; a review
+# echoing the prompt must not have that echo parsed as its evidence.
+_TEMPLATE_ECHO = "<one verbatim quote"
+
 
 def review_table(content, verdict_class):
     """Machine-readable per-criterion table derived from the review prose.
@@ -720,6 +733,22 @@ def review_table(content, verdict_class):
         m = _EVIDENCE_LINE.match(line)
         if m:
             evidence = m.group(1).strip()
+            # A review echoing the prompt's template verbatim ("EVIDENCE: <one
+            # verbatim quote, ...>") must not become a row: that text is the
+            # prompt's, not the reviewer's evidence (the historical echo class).
+            if _TEMPLATE_ECHO in evidence:
+                evidence = None
+                continue
+            # Reviewers sometimes emit the pair on one line instead of the two
+            # the prompt orders ("EVIDENCE: <quote> — JUDGMENT: PASS", measured
+            # in R3 of the p3-matrix rerun). Only the trailing form counts, so
+            # evidence text merely containing a dash is never split; the
+            # two-line form above stays authoritative and cannot double-match.
+            inline = _INLINE_JUDGMENT.search(evidence)
+            if inline:
+                criteria.append({"evidence": evidence[:inline.start()].strip(),
+                                 "judgment": inline.group(1).upper()})
+                evidence = None
             continue
         if evidence is not None and line.strip().upper().startswith("JUDGMENT:"):
             criteria.append({"evidence": evidence,

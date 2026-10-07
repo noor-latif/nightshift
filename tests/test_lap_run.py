@@ -417,6 +417,84 @@ class TestReviewVerdictParsing(unittest.TestCase):
         self.assertEqual(table["criteria"][0]["evidence"],
                          'body = {"error": "not found"}')
 
+    def test_review_table_parses_inline_pair(self):
+        # R3 of the p3-matrix rerun emitted the pair on one line (em-dash
+        # separator) and the two-line grammar missed all four rows.
+        text = 'EVIDENCE: `if self.path != "/paste":` — JUDGMENT: FAIL\n'
+        table = lap.review_table(text, "reject")
+        self.assertEqual(table["criteria"],
+                         [{"evidence": '`if self.path != "/paste":`',
+                           "judgment": "FAIL"}])
+
+    def test_review_table_parses_inline_pair_with_spaced_hyphen(self):
+        text = "EVIDENCE: x = 2 - JUDGMENT: pass\n"
+        table = lap.review_table(text, "accept")
+        self.assertEqual(table["criteria"],
+                         [{"evidence": "x = 2", "judgment": "PASS"}])
+
+    def test_review_table_mixed_two_line_and_inline_rows(self):
+        text = ("EVIDENCE: `path = urllib.parse.urlsplit(self.path).path`\n"
+                "JUDGMENT: PASS\n"
+                "\n"
+                "EVIDENCE: `self._send_json(400, {...})` — JUDGMENT: FAIL\n"
+                "\n"
+                "EVIDENCE: none\n"
+                "JUDGMENT: UNVERIFIABLE\n")
+        table = lap.review_table(text, "abstain")
+        self.assertEqual([c["judgment"] for c in table["criteria"]],
+                         ["PASS", "FAIL", "UNVERIFIABLE"])
+        self.assertEqual(table["criteria"][1]["evidence"],
+                         "`self._send_json(400, {...})`")
+        self.assertEqual(table["evidence_none_count"], 1)
+
+    def test_review_table_two_line_pair_is_not_double_parsed_as_inline(self):
+        text = ("EVIDENCE: a = 1 - b = 2\n"   # a dash, but no inline judgment
+                "JUDGMENT: PASS\n")
+        table = lap.review_table(text, "accept")
+        self.assertEqual(table["criteria"],
+                         [{"evidence": "a = 1 - b = 2", "judgment": "PASS"}])
+
+    def test_review_table_inline_none_still_counts_evidence_none(self):
+        table = lap.review_table("EVIDENCE: none — JUDGMENT: UNVERIFIABLE\n",
+                                 "abstain")
+        self.assertEqual(table["criteria"],
+                         [{"evidence": "none", "judgment": "UNVERIFIABLE"}])
+        self.assertEqual(table["evidence_none_count"], 1)
+
+    def test_review_table_excludes_echoed_prompt_template(self):
+        # A review echoing the prompt's template must not turn the template
+        # into a row, and must not swallow the real rows around it.
+        text = ("For each criterion emit exactly two lines:\n"
+                "\n"
+                "EVIDENCE: <one verbatim quote, copied character-for-character "
+                "from the diff or\n"
+                "from the current file contents above, that decides this "
+                "criterion> — or\n"
+                "literally `EVIDENCE: none` when no text in the provided "
+                "material decides it.\n"
+                "JUDGMENT: PASS | FAIL | UNVERIFIABLE\n"
+                "\n"
+                "EVIDENCE: none — JUDGMENT: UNVERIFIABLE\n")
+        table = lap.review_table(text, "abstain")
+        self.assertEqual(table["criteria"],
+                         [{"evidence": "none", "judgment": "UNVERIFIABLE"}])
+        self.assertEqual(table["evidence_none_count"], 1)
+
+    def test_review_table_parses_the_real_r3_shape(self):
+        text = ('EVIDENCE: `if self.path != "/paste":` — JUDGMENT: FAIL\n'
+                'EVIDENCE: `path = urllib.parse.urlsplit(self.path).path` — '
+                'JUDGMENT: PASS\n'
+                'EVIDENCE: `self._send_json(400, {"error": "invalid JSON '
+                'body"})` — JUDGMENT: FAIL\n'
+                'EVIDENCE: `status, body = self.request("POST", "/paste", '
+                '{"content": "factory smoke test"})` — JUDGMENT: PASS\n'
+                "VERDICT: reject\n")
+        table = lap.review_table(text, "reject")
+        self.assertEqual(len(table["criteria"]), 4)
+        self.assertEqual([c["judgment"] for c in table["criteria"]],
+                         ["FAIL", "PASS", "FAIL", "PASS"])
+        self.assertEqual(table["evidence_none_count"], 0)
+
 
 class TestLocalReviewSnapshot(unittest.TestCase):
     def test_snapshot_survives_cleanup_without_merge_or_close(self):
