@@ -252,6 +252,25 @@ class TestAddCostRows(unittest.TestCase):
         self.assertEqual(len(data["calls"]), 2)  # per-call count assertable
         self.assertEqual(data["total_usd"], 1.5)
 
+    def test_aggregate_flags_a_missing_usage_row(self):
+        """MF-3: total_usd is a lower bound; the aggregate must say so."""
+        l, cost_path = self.lap_with_tmp_evidence()
+        with unittest.mock.patch.object(lap, "COST_CEILING_USD", 10.0):
+            l.add_cost({"buyer_cost_micro": 1_500_000}, "implementer")
+            l.add_cost(None, "reviewer")
+        with open(cost_path) as f:
+            data = json.load(f)
+        self.assertEqual(data["missing_usage_calls"], 1)
+        self.assertFalse(data["cost_complete"])
+
+    def test_aggregate_is_complete_when_every_row_carries_usage(self):
+        l, cost_path = self.lap_with_tmp_evidence()
+        l.add_cost({"buyer_cost_micro": 1_000}, "implementer")
+        with open(cost_path) as f:
+            data = json.load(f)
+        self.assertEqual(data["missing_usage_calls"], 0)
+        self.assertTrue(data["cost_complete"])
+
 class TestFailedCallCostUnknown(unittest.TestCase):
     """A failed call (no response at all, so no usage will ever arrive) must
     still cost a row, marked cost_unknown — the billed spend is unknown, not
@@ -423,13 +442,32 @@ class TestReviewVerdictParsing(unittest.TestCase):
         self.assertEqual(lap.review_verdict("VERDICT:  ABSTAIN"), "abstain")
         self.assertIsNone(lap.review_verdict("no verdict line here"))
 
-    def test_first_match_wins_the_echoed_instruction_hazard_is_unchanged(self):
-        # Design §3.4: re.search returns the FIRST match, so a review echoing
-        # the instruction line captures the echo's class rather than the final
-        # line's. Pre-existing, deliberately unchanged by P3 (owner's call to
-        # harden) — pinned here so any change to it is a deliberate one.
+    def test_echoed_instruction_line_is_not_a_verdict(self):
+        # MF-1: the literal prompt instruction line matches nothing, so an echo
+        # can no longer be captured as `accept` (the merge direction).
         text = "Last line must be VERDICT: accept|reject|abstain\n\nVERDICT: reject"
-        self.assertEqual(lap.review_verdict(text), "accept")
+        self.assertEqual(lap.review_verdict(text), "reject")
+
+    def test_echo_of_the_instruction_line_alone_yields_none(self):
+        self.assertIsNone(lap.review_verdict("VERDICT: accept|reject|abstain"))
+
+    def test_echo_placed_last_does_not_beat_an_earlier_real_verdict(self):
+        # The design's plain findall(...)[-1] still fell to this shape; the
+        # (?!\s*\|) guard is what closes it.
+        text = "VERDICT: reject\n\nLast line must be VERDICT: accept|reject|abstain\n"
+        self.assertEqual(lap.review_verdict(text), "reject")
+
+    def test_echo_first_then_a_real_verdict_wins(self):
+        text = ("EVIDENCE: the prompt says VERDICT: accept|reject|abstain — "
+                "JUDGMENT: PASS\nVERDICT: reject\n")
+        self.assertEqual(lap.review_verdict(text), "reject")
+
+    def test_last_of_two_real_verdicts_wins(self):
+        text = "VERDICT: accept\n\non reflection\n\nVERDICT: reject\n"
+        self.assertEqual(lap.review_verdict(text), "reject")
+
+    def test_inline_mid_sentence_verdict_parses(self):
+        self.assertEqual(lap.review_verdict("...so VERDICT: reject."), "reject")
 
     def test_review_table_pairs_evidence_with_judgment(self):
         text = ("EVIDENCE: x = 2\nJUDGMENT: PASS\n"

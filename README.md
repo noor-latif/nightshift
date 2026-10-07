@@ -5,13 +5,54 @@ Time-boxed spike answering one question: can our own code run factory laps
 interventions and zero false greens. The evidence ledger is published
 under `docs/evidence/` (MANIFEST.md is the index).
 
+## Status and trust model — read this before running anything
+
+This is a **spike**, published because its evidence ledger is worth reading. It
+is not hardened software, and it is not sandboxed.
+
+- **Native commands run unsandboxed, as you.** Every `prepare`, `verify` and
+  `suite` argv — and everything the qualifier dry-runs — is executed through
+  `subprocess` as the invoking user with that user's full permissions. There is
+  no container, no namespace, no seccomp filter and no filesystem jail around
+  them. A command you configure, or that a candidate repo's documentation leads
+  you to configure, can do anything your account can do: read `~/.ssh`, read
+  your env, delete files, use the network. The only containment in the design is
+  the **per-repo trust model**: you read a repo's build/test commands and decide
+  to run them. (`unshare -rn` appears in `qualify.py` only as the opt-in G5
+  dead-egress *probe*; it never wraps a lap's own commands.) The reasoning, and
+  the microVM path reserved for hostile-repo mode, are in
+  `SANDBOX-MICROVM-VS-NIX_2026-10-07.md` in the working docs tree.
+- **Model calls go through the surplus gateway.** `src/agent.py` speaks the
+  gateway's OpenAI-compatible API (`SURPLUS_BASE_URL` + `/v1/chat/completions`,
+  or `/v1/responses` per role); `agent.chat()` is the only egress. A missing
+  or rotated key, or a gateway outage, ends the lap at `gate=gateway` — it never
+  turns into a green.
+- **Cost is a gate, not a report.** `COST_CEILING_USD` (default $0.01) is
+  enforced at runtime: cumulative recorded spend past it raises and fails the
+  lap with `gate=cost`. Recorded spend is a *lower* bound — a call whose response
+  carried no usage block is recorded as a row with `usage: null` and
+  `missing_usage: true` rather than dropped.
+- **Recipes are operator-side.** The kernel reads its gate config from the
+  **launch env** (`FACTORY_NATIVE_CONFIG`), never from the checkout, so a recipe
+  inside a candidate repo cannot point verify at `/bin/true`. The recipe store is
+  the trust anchor.
+
+The working reports behind this spike (field tests, lap runs, defect
+post-mortems) live in `~/repos/factory-docs/`; `docs/evidence/` here is the
+frozen, redacted ledger that ships with the repo.
+
 ## Layout
 
-- `src/` — eight modules: `settings.py` (literal config values only),
+- `src/` — nine modules: `settings.py` (literal config values only),
   `supervisor` (tick loop), `selector` (issue claim), `agent` (surplus LLM
   calls), `lap` (issue→merge chain), `verify` (oracle-first probes),
   `merge` (squash + tree-equality), `deploy` (PID-file launch +
-  identity read-back).
+  identity read-back), `qualify.py` (per-repo build/test distillation).
+- `src/prompts/` — the three role prompts (`implementer.txt`, `reviewer.txt`,
+  `qualifier.txt`). They are files, not string literals, so what a model is told
+  is reviewable in the diff.
+- `scripts/` — the two entrypoints: `run-lap.sh` (detached paid lap) and
+  `qualify.sh` (recipe distillation).
 - `scenarios/` — HTTP scenario probes for the toy-product rig.
 - `tests/` — stdlib unittest; run offline, no network/ssh/gh/API key needed.
   The supervisor test's child process strips `NTFY_TOPIC` (a fixture once
@@ -27,6 +68,44 @@ supervisor and the lap run on the rig itself, so the deploy script is
 executed locally with `bash` — no ssh hop. Scope: time-boxed spike —
 issue → implement → verify → merge → deploy laps, zero human interventions,
 zero false greens.
+
+## Qualify a repo (distil its recipe) — the step before any lap
+
+A lap needs a trusted `FACTORY_NATIVE_CONFIG`: the prepare/verify/suite argv for
+one repo at one pinned base commit. `src/qualify.py` produces it — deterministic
+by default (**zero model calls**), with one optional paid proposal.
+
+    # 1. deterministic pass over a clone (free): dry-runs every proposed argv
+    #    in a throwaway worktree at the pinned base and grades G1-G11
+    scripts/qualify.sh ~/path/to/clone --netns --probe --out /tmp/recipe.json
+
+    # 2. let the qualifier model propose commands the docs state but the
+    #    deterministic layer cannot infer (ONE call; every proposal is
+    #    re-run and bound, or discarded)
+    scripts/qualify.sh ~/path/to/clone --agent --out /tmp/recipe.json
+
+    # 3. read it, then emit the launch env the kernel already trusts
+    scripts/qualify.sh ~/path/to/clone --render          # human view
+    scripts/qualify.sh ~/path/to/clone --emit-env -      # export lines
+
+Exit status is 0 for `go`/`partial` and 1 for `no-go`; the JSON printed on the
+default path carries `status`, `gap`, `gate` and the recipe path. A recipe is a
+`nightshift.recipe/1` document whose `gate` table is the evidence for its
+verdict: G1/G2 dry-run the argv, G3 binds the test total through the kernel's own
+parser, G3b/G4/G5 probe collection, determinism and dead-egress hermeticity,
+G6/G7/G8 check build hygiene, argv provenance and that the emitted config parses
+under `settings.py`, G9 A/B-tests hook neutralisation, G10 the adapter, G11 that
+every clone in the chain is deep enough to resolve the base. The four task-level
+keys (`FACTORY_TASK_FILE`, `CODE_PATHS`, `FACTORY_NEW_FILES`, `SCENARIOS_DIR`)
+are emitted commented out: they are the operator's to author, never the model's.
+
+Honest limits of the gate table, today: a `skip` caused by G3 failing carries the
+blocked-by marker `skip(G3)`, but a skip for an absent input (no `--netns`, no
+`--probe`) still does not say *why*; G9 passes vacuously on a clone with no
+installed hooks; and the `network` field the qualifier prompt asks for is
+**derived** from `--netns`, never taken from the proposal. Read `gate` as
+"measured green" only where it says `pass` **and** the corresponding receipt
+exists under the evidence dir.
 
 ## Local lap — canonical entrypoint
 

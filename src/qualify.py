@@ -506,7 +506,7 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
                           base_count=base_count, identical=same)
             gates["G4"] = "pass" if same else "fail"
         else:
-            gates["G4"] = "skip"
+            gates["G4"] = "skip(G3)" if gates["G3"] != "pass" else "skip"
 
         # ---- G5: hermeticity under a dead-egress netns ---------------------
         if suite_entry is not None and gates["G3"] == "pass" and netns:
@@ -517,14 +517,14 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
                           argv_wrapped=netns_argv(suite_entry["argv"]),
                           lo_required=True, gate=gates["G5"])
         else:
-            gates["G5"] = "skip"
+            gates["G5"] = "skip(G3)" if gates["G3"] != "pass" else "skip"
 
         # ---- G6: build hygiene --------------------------------------------
         dirty = _git(["status", "--porcelain"], worktree)
         gates["G6"] = "pass" if not dirty else "fail"
 
         # ---- G3b: collection liveness (the free RED half) ------------------
-        gates["G3b"] = "skip"
+        gates["G3b"] = "skip(G3)" if (probe and not base_count) else "skip"
         if probe and base_count:
             gates["G3b"] = _collection_probe(worktree, probe, suite_entry, runner,
                                              suite_timeout_s, evdir, run_env, base_count)

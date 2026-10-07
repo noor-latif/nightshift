@@ -623,11 +623,17 @@ class Lap:
             self.costs.append(row)
         total_usd = sum((c["usage"] or {}).get("buyer_cost_micro") or 0
                         for c in self.costs) / 1e6
+        missing_usage_calls = sum(1 for c in self.costs if c.get("missing_usage"))
         self._dump("cost.json", {
             "calls": self.costs,
             # buyer_cost_micro is the truthful field (exact vs order book);
             # usage.cost reads ~15% low (luna-qualify probe 3)
             "total_usd": total_usd,
+            # total_usd sums only rows that carried a usage block, so it is a
+            # LOWER bound: a usage=None row contributes 0. Publish the count so
+            # the aggregate cannot silently understate (MF-3, audit §1.3).
+            "missing_usage_calls": missing_usage_calls,
+            "cost_complete": missing_usage_calls == 0,
         })
         if total_usd > COST_CEILING_USD:
             raise CostCeilingExceeded(
@@ -692,17 +698,23 @@ def finish(lap, outcome, gate=None, error=None, caught=None, extra=None):
     lap.event("lap-end", outcome=outcome, gate=gate)
 
 
+# The reviewer prompt itself carries the literal instruction line
+# "VERDICT: accept|reject|abstain" (src/prompts/reviewer.txt); the `(?!\s*\|)`
+# lookahead makes an echo of that line match NOTHING, so it can neither win nor
+# be mistaken for a verdict. A real verdict line and an inline "…so VERDICT:
+# reject" still parse. MF-1 (audit §1.2): the old first-match form captured the
+# echo's class — and the wrong direction there is `accept`, the merge path.
+_VERDICT = re.compile(r"VERDICT:\s*(accept|reject|abstain)\b(?!\s*\|)", re.I)
+
 def review_verdict(content):
     """The reviewer's verdict class, lowercased, or None if unparseable.
 
-    Anchoring is deliberately unchanged from the pre-P3 kernel: re.search
-    (FIRST match anywhere in the text), no ^/$/\\Z, \\s* after the colon,
-    case-insensitive. Pre-existing hazard, carried knowingly (design §3.4):
-    a review that echoes the instruction line "VERDICT: accept|reject|abstain"
-    captures that echo's class instead of the final line's. Fixing it (last
-    match) is the owner's call, not part of this change."""
-    m = re.search(r"VERDICT:\s*(accept|reject|abstain)", content, re.I)
-    return m.group(1).lower() if m else None
+    Anchoring: the LAST match anywhere in the text wins (a review's final line
+    is its verdict; an earlier echo of the prompt's instruction line must not
+    override it), no ^/$/\\Z, \\s* after the colon, case-insensitive. An echo of
+    the instruction line matches nothing at all — see `_VERDICT`."""
+    matches = _VERDICT.findall(content)
+    return matches[-1].lower() if matches else None
 
 
 _EVIDENCE_LINE = re.compile(r"^\s*[-*]?\s*EVIDENCE:\s*(.*)$", re.I)

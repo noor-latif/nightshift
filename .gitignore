@@ -2,3 +2,6 @@
 /claims/
 __pycache__/
 *.pid
+env.sh
+.env
+.env.*

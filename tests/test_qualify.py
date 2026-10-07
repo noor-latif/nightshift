@@ -323,6 +323,24 @@ class TestDryRun(QualifyCase):
         self.assertEqual(r["verify"][0]["observed_at_base"]["count"], 3)
         self.assertEqual(r["verify"][0]["source"]["kind"], "dryrun")
 
+    def test_g3_failure_marks_the_gates_it_blocks(self):
+        """F6-lite: a skip caused by G3 failing carries the blocked-by marker,
+        so a gate-table reader can tell it from an absent --netns/--probe."""
+        # no `# tests` total at all: G3 cannot bind, so base_count is None
+        red = _write(os.path.join(self.tmp, "red.sh"),
+                     "#!/usr/bin/env bash\necho 'boom'\nexit 1\n", 0o755)
+        _, r = self._run(probe=True, seed_over={
+            "verify": [{"argv": [red], "timeout_s": 60, "expect_at_base": "exit0"}],
+            "collection_probe": {"kind": "append_test", "target": "tests/probe.txt",
+                                 "snippet": "# test probe-fail"}})
+        self.assertEqual(r["gate"]["G3"], "fail")
+        for g in ("G4", "G5", "G3b"):
+            self.assertEqual(r["gate"][g], "skip(G3)", "%s: %s" % (g, r["gate"]))
+        # with G3 green, a skip for an absent input stays a bare skip
+        _, r2 = self._run()
+        self.assertEqual(r2["gate"]["G3"], "pass")
+        self.assertEqual(r2["gate"]["G5"], "skip")
+
     def test_default_path_checks_the_proposed_quote_not_only_the_receipt(self):
         """F2: dry_run must not overwrite `source` with its receipt, or G7's
         quote half never runs on the default (dry-run) path."""
