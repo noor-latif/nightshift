@@ -186,6 +186,26 @@ class TestProvenance(QualifyCase):
         self.assertFalse(ok)
         self.assertIn("unknown", why)
 
+    def test_provenance_checks_both_the_claim_and_the_receipt(self):
+        """F2: when both are recorded, a passing quote with a mismatched
+        receipt is not provenance."""
+        repo, _ = self.repo(files={"README.md": "run: make test\n"})
+        ev = self.evdir()
+        receipt = qualify.write_receipt(ev, "r2", {"argv": ["x"], "exit": 0})
+        quote = {"kind": "quote", "file": "README.md", "line": 1,
+                 "text": "run: make test"}
+        entries = [("prepare", {"source": dict(quote),
+                                "dryrun": {"kind": "dryrun", "exit": 0,
+                                           "evidence": receipt}}),
+                   ("prepare", {"source": dict(quote),
+                                "dryrun": {"kind": "dryrun", "exit": 1,
+                                           "evidence": receipt}})]
+        prov = qualify.check_provenance(repo, ev, entries)
+        self.assertEqual([r["ok"] for r in prov["entries"]], [True, False])
+        self.assertFalse(prov["ok"])
+        self.assertIn("quote verified", prov["entries"][0]["why"])
+        self.assertIn("dryrun receipt exit=0 matches", prov["entries"][0]["why"])
+
 
 # --------------------------------------------------------------------------
 # D1/D2/D3/D4/D5 — static checks
@@ -303,6 +323,67 @@ class TestDryRun(QualifyCase):
         self.assertEqual(r["verify"][0]["observed_at_base"]["count"], 3)
         self.assertEqual(r["verify"][0]["source"]["kind"], "dryrun")
 
+    def test_default_path_checks_the_proposed_quote_not_only_the_receipt(self):
+        """F2: dry_run must not overwrite `source` with its receipt, or G7's
+        quote half never runs on the default (dry-run) path."""
+        repo, _ = self.repo(files={"README.md": "run: make test\n",
+                                   "tests/probe.txt": "# test a\n"})
+        suite = _write(os.path.join(self.tmp, "suite.sh"), SUITE_SH, 0o755)
+        seed = self.seed(repo, suite)
+        seed["prepare"][0]["source"] = {"kind": "quote", "file": "README.md",
+                                        "line": 1, "text": "run: make test"}
+        r = qualify.qualify(repo, seed=seed, evdir=self.evdir())
+        self.assertEqual(r["gate"]["G7"], "pass", r["checks"]["provenance"])
+        why = r["checks"]["provenance"]["entries"][0]["why"]
+        self.assertIn("quote verified", why)
+        self.assertIn("dryrun receipt exit=0 matches", why)
+        entry = r["prepare"][0]
+        self.assertEqual(entry["source"]["kind"], "quote")       # the claim survives
+        self.assertTrue(os.path.isfile(entry["dryrun"]["evidence"]))  # and the receipt
+
+    def test_default_path_rejects_a_fabricated_quote(self):
+        """Q1/Q3: the argv executes (green, then failing) and the quote is
+        still checked, so a fabricated citation fails G7 either way."""
+        repo, _ = self.repo(files={"README.md": "run: make test\n",
+                                   "tests/probe.txt": "# test a\n"})
+        suite = _write(os.path.join(self.tmp, "suite.sh"), SUITE_SH, 0o755)
+        for argv in (["true"], ["false"]):
+            seed = self.seed(repo, suite)
+            seed["prepare"][0] = {
+                "argv": argv,
+                "source": {"kind": "quote", "file": "README.md", "line": 1,
+                           "text": "FABRICATED QUOTE THAT APPEARS NOWHERE"}}
+            r = qualify.qualify(repo, seed=seed, evdir=self.evdir("ev-" + argv[0]))
+            self.assertEqual(r["gate"]["G7"], "fail", argv)
+            self.assertEqual(r["prepare"][0]["source"]["kind"], "quote", argv)
+            self.assertIn("not byte-identical",
+                          r["checks"]["provenance"]["entries"][0]["why"], argv)
+
+    def test_seeded_dryrun_source_is_rebound_to_this_pass_receipt(self):
+        """A seeded `dryrun` is re-measured; a seeded quote is not."""
+        repo, _ = self.repo(files={"README.md": "run: make test\n",
+                                   "tests/probe.txt": "# test a\n"})
+        suite = _write(os.path.join(self.tmp, "suite.sh"), SUITE_SH, 0o755)
+        seed = self.seed(repo, suite)
+        seed["prepare"][0]["source"] = {"kind": "dryrun", "exit": 0,
+                                        "evidence": "/gone/away.json"}
+        ev = self.evdir()
+        r = qualify.qualify(repo, seed=seed, evdir=ev)
+        self.assertEqual(r["gate"]["G7"], "pass", r["checks"]["provenance"])
+        self.assertEqual(r["prepare"][0]["source"]["evidence"],
+                         r["prepare"][0]["dryrun"]["evidence"])
+        self.assertTrue(r["prepare"][0]["source"]["evidence"].startswith(ev))
+
+    def test_a_seeds_stale_gap_never_beats_the_measured_gates(self):
+        """A re-run recomputes the gate table; the seed's recorded gap
+        describes the seed's run, so it must not be copied into the output."""
+        repo = self.suite_repo()
+        suite = os.path.join(self.tmp, "suite.sh")
+        seed = self.seed(repo, suite, gap="G2,G3,G4,G5")
+        r = qualify.qualify(repo, seed=seed, evdir=self.evdir())
+        self.assertEqual(r["status"], "partial")
+        self.assertEqual(r["gap"], "G3b,G5,G10")
+
     def test_poisoned_hook_escape_is_proven_by_an_ab_commit(self):
         repo, _ = self.repo(files={"README.md": "# r\n",
                                    ".gitignore": ".pre-commit-config.yaml\n",
@@ -378,6 +459,25 @@ class TestDryRun(QualifyCase):
         # the probe ran in a throwaway worktree and the repo is untouched
         self.assertEqual(_git(repo, "status", "--porcelain"), "")
         self.assertEqual(len(_git(repo, "worktree", "list").splitlines()), 1)
+
+    def test_collection_probe_accepts_the_proposals_file_key(self):
+        """The agent's own name for the probe file (`file`) is accepted, so a
+        recorded recipe cannot crash G3b — reachable only once G3 binds."""
+        repo = self.suite_repo()
+        suite = os.path.join(self.tmp, "suite.sh")
+        seed = self.seed(repo, suite, collection_probe={
+            "kind": "append_test", "file": "tests/probe.txt",
+            "snippet": "# test probe-fail"})
+        r = qualify.qualify(repo, seed=seed, evdir=self.evdir(), probe=True)
+        self.assertEqual(r["gate"]["G3b"], "pass")
+        self.assertEqual(r["collection_probe"]["result"]["count"], 4)
+
+    def test_malformed_collection_probe_skips_instead_of_crashing(self):
+        repo = self.suite_repo()
+        suite = os.path.join(self.tmp, "suite.sh")
+        seed = self.seed(repo, suite, collection_probe={"kind": "append_test"})
+        r = qualify.qualify(repo, seed=seed, evdir=self.evdir(), probe=True)
+        self.assertEqual(r["gate"]["G3b"], "skip")
 
     def test_collection_probe_accepts_a_passed_only_total(self):
         """The flox shape: the adapter's TAP total counts PASSED tests, so an

@@ -346,11 +346,41 @@ def _source_ok(repo, state_dir, src, argv=None):
     return False, "unknown source kind %r" % (kind,)
 
 
+def _bind_receipt(entry, res, receipt):
+    """Record the dry-run receipt ALONGSIDE the proposed source — never over it.
+
+    `check_provenance` runs after `dry_run`, so overwriting `source` with the
+    receipt deleted the very claim G7 exists to check: a `quote` became a
+    `dryrun` that matched by construction. Instead the proposed source is kept
+    (a quote stays a quote, and `_quote_ok` really runs) and the observed
+    receipt is recorded as `dryrun`. A source of any other kind — absent, or a
+    seeded `dryrun` being re-measured — is (re)bound to this pass's receipt,
+    which is the only claim a run can make for it.
+    """
+    observed = {"kind": "dryrun", "exit": res["exit"],
+                "duration_s": res["duration_s"], "evidence": receipt}
+    entry["dryrun"] = observed
+    if entry.get("source", {}).get("kind") not in ("quote", "operator"):
+        entry["source"] = dict(observed)
+
 def check_provenance(repo, state_dir, entries):
-    """D12/G7 over every prepare/verify entry."""
+    """D12/G7 over every prepare/verify entry.
+
+    Both halves are checked: the proposed `source` (a quote byte-identical at
+    its file:line, an operator argv living outside the repo) and, when the
+    entry was executed, the `dryrun` receipt it must match. A failing argv is
+    not G7's business — G1/G2 already bind the observed exit to the declared
+    base verdict.
+    """
     rows = []
     for phase, entry in entries:
         ok, why = _source_ok(repo, state_dir, entry.get("source"), entry.get("argv"))
+        observed = entry.get("dryrun")
+        if ok and observed is not None and entry.get("source") != observed:
+            if _dryrun_ok(state_dir, observed):
+                why = "%s; dryrun receipt exit=%s matches" % (why, observed["exit"])
+            else:
+                ok, why = False, "dryrun receipt missing or exit mismatch"
         rows.append({"phase": phase, "argv": entry.get("argv"), "ok": ok, "why": why})
     return {"entries": rows, "ok": bool(rows) and all(r["ok"] for r in rows)}
 
@@ -422,8 +452,7 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
                        out_path=os.path.join(evdir, "prepare-%d.stdout" % i),
                        err_path=os.path.join(evdir, "prepare-%d.stderr" % i), env=run_env)
             receipt = write_receipt(evdir, "prepare-%d" % i, res)
-            entry["source"] = {"kind": "dryrun", "exit": res["exit"],
-                               "duration_s": res["duration_s"], "evidence": receipt}
+            _bind_receipt(entry, res, receipt)
             ok = ok and res["exit"] == 0
         gates["G1"] = "pass" if ok else "fail"
 
@@ -451,9 +480,7 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
                 # a "red" oracle must actually be red, or it is vacuous
                 good = res["exit"] not in (0, None)
             entry["observed_at_base"] = observed
-            if entry.get("source", {}).get("kind") != "operator":
-                entry["source"] = {"kind": "dryrun", "exit": res["exit"],
-                                   "duration_s": res["duration_s"], "evidence": receipt}
+            _bind_receipt(entry, res, receipt)
             ver_rows.append(res)
             g2 = g2 and good
         gates["G2"] = "pass" if g2 else "fail"
@@ -640,7 +667,10 @@ def _collection_probe(worktree, probe, suite_entry, runner, timeout_s, evdir,
     Runs in the throwaway worktree and restores the file, so nothing tracked
     outside it is ever touched.
     """
-    target = os.path.join(worktree, probe["target"])
+    target_name = probe.get("target") or probe.get("file")
+    if not isinstance(target_name, str) or not isinstance(probe.get("snippet"), str):
+        return "skip"
+    target = os.path.join(worktree, target_name)
     try:
         with open(target, "a") as f:
             f.write("\n" + probe["snippet"] + "\n")
@@ -662,7 +692,7 @@ def _collection_probe(worktree, probe, suite_entry, runner, timeout_s, evdir,
         probe["result"] = result
         return "pass" if (res["exit"] not in (0, None) and count_ok and seen) else "fail"
     finally:
-        subprocess.run(["git", "checkout", "--", probe["target"]], cwd=worktree,
+        subprocess.run(["git", "checkout", "--", target_name], cwd=worktree,
                        capture_output=True)
 
 
@@ -974,7 +1004,7 @@ def qualify(repo, *, seed=None, chain=(), use_agent=False, netns=False, probe=Fa
             gate["G8"] = "fail"
         checks["config_parse"] = parsed
         gate["G10"] = _adapter_gate(merged, evdir)
-        gap = merged.get("gap") or gap_from(gate)
+        gap = gap_from(gate)
 
     status = compute_status(gate)
     recipe = {

@@ -104,9 +104,10 @@ Field notes:
   `# tests N` line on stdout with N > 0; `pytest` needs exactly one summary
   line ending in `in X.XXs` carrying `N passed`. If the repo's own runner
   emits neither, that is what `runner_gap` and `adapter` are for.
-- `collection_probe`, when you can supply one, is a snippet appended to one
-  file that makes exactly one test fail, plus the file to append it to. It is
-  how the pass proves the suite count is live rather than cached. Leave it
-  `null` rather than guessing a snippet that will not compile.
+- `collection_probe`, when you can supply one, is an object
+  `{"target": "path/to/the/file", "snippet": "the text appended to it"}` — a
+  snippet appended to one file that makes exactly one test fail. It is how the
+  pass proves the suite count is live rather than cached. Leave it `null`
+  rather than guessing a snippet that will not compile.
 - `traps` is prose for a human. Nothing is gated on it. Put the things that
   would cost someone a debugging cycle here.

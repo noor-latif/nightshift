@@ -34,16 +34,22 @@ def _tap_test_count(output):
     return int(totals[0])
 
 
-_PYTEST_SUMMARY = re.compile(r"^.*?\bin\s+\d+\.\d+s\s*$", re.M)  # the single summary line
+# The single summary line. pytest's DEFAULT (non -q) output pads it with `=`
+# banners — "===== 506 passed, 2 xfailed, 1 xpassed in 1.02s =====" — so the
+# line does not END at "in X.XXs"; `[= \t]*\r?$` accepts that banner (and the
+# bare `-q` form, and trailing whitespace/CRLF) while still requiring the total
+# to be on a line that terminates right after it.
+_PYTEST_SUMMARY = re.compile(r"^.*?\bin\s+\d+\.\d+s[= \t]*\r?$", re.M)
 _PYTEST_PASSED = re.compile(r"\b(\d+)\s+passed\b")
 
 def _pytest_test_count(output):
     """One authoritative pytest summary line; missing/duplicate/invalid is unknown.
 
-    The summary is the single line ending in "in X.XXs"; the passed count must
-    come from that same line, so a fabricated "N passed" elsewhere cannot
-    manufacture a total. Zero-tests signatures (exit 5 "no tests ran",
-    "collected 0 items", all-skipped) carry no passed count -> None -> vacuous.
+    The summary is the single line carrying "in X.XXs" (banner-padded or bare);
+    the passed count must come from that same line, so a fabricated "N passed"
+    elsewhere cannot manufacture a total. Zero-tests signatures (exit 5 "no
+    tests ran", "collected 0 items", all-skipped) carry no passed count -> None
+    -> vacuous.
     """
     lines = _PYTEST_SUMMARY.findall(output)
     if len(lines) != 1:

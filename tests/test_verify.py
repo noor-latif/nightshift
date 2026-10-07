@@ -671,6 +671,43 @@ class TestSuiteRunnerDispatch(unittest.TestCase):
         for text, expected in cases:
             self.assertEqual(verify._pytest_test_count(text), expected, repr(text))
 
+    def test_pytest_parser_binds_the_default_banner_padded_summary(self):
+        """pytest's default (non -q) output pads the summary with `=` banners;
+        the count must bind from that line (the field-test F1)."""
+        cases = (
+            ("=" * 18 + " 506 passed, 2 xfailed, 1 xpassed in 1.02s " + "=" * 18 + "\n", 506),
+            ("=== 3 failed, 503 passed in 1.0s ===\n", 503),   # red run still binds N
+            ("== 12 passed in 0.05s ==\r\n", 12),              # CRLF
+            ("====== 1 passed in 0.01s ======\n", 1),
+            # the bare `-q` form is unchanged
+            ("506 passed, 2 xfailed, 1 xpassed in 1.02s\n", 506),
+            # a banner-padded zero-tests signature is still vacuous
+            ("=== no tests ran in 0.01s ===\n", None),
+            ("=== 2 skipped in 0.01s ===\n", None),
+            # two banner-padded summaries are still ambiguous -> unknown
+            ("== 3 passed in 1.00s ==\n== 4 passed in 2.00s ==\n", None),
+            # a "N passed" outside the summary line cannot manufacture a total
+            ("=== 7 passed in 0.00s ===\nwarning: 99 passed\n", 7),
+        )
+        for text, expected in cases:
+            self.assertEqual(verify._pytest_test_count(text), expected, repr(text))
+
+    def test_pytest_banner_padded_summary_through_the_runner(self):
+        """A default-output green run passes; a red run binds its count and fails."""
+        green = [sys.executable, "-c",
+                 "print('=' * 18 + ' 506 passed, 2 xfailed, 1 xpassed in 1.02s ' + '=' * 18)"]
+        red = [sys.executable, "-c",
+               "print('=== 3 failed, 503 passed in 1.0s ==='); raise SystemExit(1)"]
+        with tempfile.TemporaryDirectory() as cwd:
+            status, rows = verify._run_native_commands([green], cwd, green,
+                                                       runner="pytest")
+            self.assertEqual(status, "pass")
+            self.assertEqual(rows[0]["test_count"], 506)
+            status, rows = verify._run_native_commands([red], cwd, red, runner="pytest")
+            self.assertEqual(status, "fail")
+            self.assertEqual(rows[0]["test_count"], 503)   # bound, and not vacuous
+            self.assertNotIn("vacuous", rows[0])
+
     def test_default_runner_parses_tap_not_pytest(self):
         suite = [sys.executable, "-c", "print('12 passed in 0.05s')"]
         with tempfile.TemporaryDirectory() as cwd:
