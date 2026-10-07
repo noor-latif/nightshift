@@ -381,5 +381,22 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
                 # reasoning ate the budget → preserve the existing null-content contract
                 raise TransientError("reasoning exhausted max_tokens even doubled (%d)" % attempt_max)
             continue
+        if not (result["content"] or "").strip():
+            # finish_reason=stop with zero content deltas: the provider ended
+            # the stream normally but delivered reasoning only. Transport
+            # defect, not an answer — left alone it reaches the caller as ''
+            # and every downstream label for that is a confabulation (observed
+            # as a reviewer "no parseable verdict" on a 0-byte review.txt).
+            trace("empty-content", attempt=attempt,
+                  finish_reason=result["finish_reason"], requested_model=model,
+                  reasoning_chars=len(result["reasoning"] or ""),
+                  usage=result["usage"],
+                  elapsed_s=round(time.monotonic() - attempt_started, 3),
+                  error="finish_reason=%s with no content deltas" % result["finish_reason"])
+            if attempt == 2:
+                raise TransientError(
+                    "empty content after retry (finish_reason=%s, reasoning only)"
+                    % result["finish_reason"])
+            continue
         return result
     raise TransientError("unreachable")  # pragma: no cover

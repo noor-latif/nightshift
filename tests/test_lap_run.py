@@ -277,6 +277,36 @@ class TestFailedCallCostUnknown(unittest.TestCase):
         self.assertTrue(cost["calls"][0]["cost_unknown"])
         self.assertEqual(cost["total_usd"], 0)
 
+class TestEmptyReviewerCompletion(unittest.TestCase):
+    """Run 20261007T134816-issue-4001: the reviewer stream ended stop with no
+    content, '' reached review_verdict(), and the lap reported the review gate's
+    "no parseable verdict" — blaming the reviewer for a transport defect. After
+    agent.chat's retry is exhausted the fault must land on the gateway gate."""
+
+    def test_empty_reviewer_completion_fails_the_gateway_gate(self):
+        def chat_with_dead_reviewer(msgs, model, **kw):
+            if model == lap.REVIEWER_MODEL:
+                raise lap.agent.TransientError(
+                    "empty content after retry (finish_reason=stop, reasoning only)")
+            return {"content": json.dumps(
+                        [{"file": "app.py", "find": "x = 1", "replace": "x = 2"}]),
+                    "finish_reason": "stop", "usage": {"buyer_cost_micro": 1000}}
+
+        with FakeLapEnv("none") as env:
+            with unittest.mock.patch.object(lap.agent, "chat",
+                                            side_effect=chat_with_dead_reviewer):
+                lap.run(FakeLapEnv.ISSUE)
+        with open(os.path.join(env.base, "lap-result.json")) as f:
+            result = json.load(f)
+        self.assertEqual(result["outcome"], "failure")
+        self.assertEqual(result["gate"], "gateway")  # not "review"
+        self.assertIn("empty content after retry", result["error"])
+        run_ids = sorted(os.listdir(os.path.join(env.base, "evidence")))
+        with open(os.path.join(env.base, "evidence", run_ids[-1], "cost.json")) as f:
+            cost = json.load(f)
+        self.assertEqual(cost["calls"][-1]["role"], "reviewer")
+        self.assertTrue(cost["calls"][-1]["cost_unknown"])
+
 
 class TestPromptViewSanity(unittest.TestCase):
     def test_implausibly_small_billed_prompt_is_durable_instrument_observation(self):

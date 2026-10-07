@@ -228,6 +228,71 @@ class TestChat(unittest.TestCase):
         with self.assertRaises(TransientError):
             chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
 
+    # observed (run 20261007T134816-issue-4001): the reviewer stream ended
+    # finish_reason=stop after 16 reasoning deltas, zero content deltas, no
+    # usage chunk. '' then reached review_verdict() and the lap blamed the
+    # reviewer for giving "no parseable verdict" — a confabulated cause.
+    REASONING_ONLY = (
+        b'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n'
+        b'data: {"choices":[{"delta":{"reasoning_content":" more"}}]}\n'
+        b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n'
+        b"data: [DONE]\n"
+    )
+
+    def test_stop_with_empty_content_retries_once_then_succeeds(self):
+        op = FakeOpener([FakeResp(self.REASONING_ONLY), FakeResp(load("sse_stream.txt"))])
+        got = chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        self.assertEqual(got["content"], "OK")
+        self.assertEqual(len(op.calls), 2)  # exactly one retry
+
+    def test_stop_with_empty_content_twice_raises_transient_fault(self):
+        op = FakeOpener([FakeResp(self.REASONING_ONLY), FakeResp(self.REASONING_ONLY)])
+        with self.assertRaises(TransientError) as cm:
+            chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        self.assertIn("empty content after retry", str(cm.exception))
+        self.assertIn("finish_reason=stop", str(cm.exception))
+        self.assertEqual(len(op.calls), 2)
+        # same class the lap already routes to gate=gateway with a
+        # cost_unknown row (tests/test_lap_run.py TestFailedCallCostUnknown)
+        self.assertIs(type(cm.exception), TransientError)
+
+    def test_stop_with_empty_content_records_typed_fault(self):
+        # same shape as the stream-incomplete fault: attempt, finish_reason,
+        # how much reasoning was billed, the requested model
+        op = FakeOpener([FakeResp(self.REASONING_ONLY), FakeResp(load("sse_stream.txt"))])
+        with tempfile.TemporaryDirectory() as td:
+            chat([{"role": "user", "content": "x"}], "glm-5.3-flash", api_key="k",
+                 opener=op, trace_dir=td, call_id="c1")
+            with open(os.path.join(td, "model-calls.jsonl")) as f:
+                rows = [json.loads(line) for line in f]
+        fault = [r for r in rows if r["phase"] == "empty-content"]
+        self.assertEqual(len(fault), 1)
+        self.assertEqual(fault[0]["attempt"], 1)
+        self.assertEqual(fault[0]["finish_reason"], "stop")
+        self.assertEqual(fault[0]["reasoning_chars"], len("thinking more"))
+        self.assertEqual(fault[0]["requested_model"], "glm-5.3-flash")
+
+    def test_normal_stop_with_content_never_retries(self):
+        op = FakeOpener([FakeResp(load("sse_stream.txt"))])
+        got = chat([{"role": "user", "content": "x"}], "m", api_key="k", opener=op)
+        self.assertEqual(got["content"], "OK")
+        self.assertEqual(len(op.calls), 1)
+
+    def test_length_finish_keeps_its_own_fault(self):
+        # a length finish is the budget fault, unchanged: the empty-content
+        # guard sits after it and must not relabel it
+        starved = (
+            b'data: {"choices":[{"delta":{"reasoning_content":"long thought"}}]}\n'
+            b'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n'
+            b"data: [DONE]\n"
+        )
+        op = FakeOpener([FakeResp(starved), FakeResp(starved)])
+        with self.assertRaises(TransientError) as cm:
+            chat([{"role": "user", "content": "x"}], "m", max_tokens=16,
+                 api_key="k", opener=op)
+        self.assertIn("reasoning exhausted max_tokens even doubled", str(cm.exception))
+        self.assertIn(b'"max_tokens": 32', op.calls[1].data)
+
 
 class TestImplementerPrompt(unittest.TestCase):
     def test_behavior_fix_requires_provided_regression_test(self):
