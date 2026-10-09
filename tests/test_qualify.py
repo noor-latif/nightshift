@@ -314,12 +314,14 @@ class TestDryRun(QualifyCase):
     def test_full_deterministic_pass_reaches_partial(self):
         repo, r = self._run()
         self.assertEqual(r["status"], "partial")
-        for g in ("G1", "G2", "G3", "G4", "G6", "G7", "G8", "G11", "G9"):
+        for g in ("G1", "G2", "G3", "G4", "G6", "G7", "G8", "G11"):
             self.assertEqual(r["gate"][g], "pass", "%s: %s" % (g, r["gate"]))
+        # no installed hooks: the A/B would be vacuous, so G9 skips with the reason
+        self.assertEqual(r["gate"]["G9"], "skip(no-hooks)")
         # out of scope for a free run, and honestly recorded as such
         for g in ("G3b", "G5", "G10"):
             self.assertEqual(r["gate"][g], "skip")
-        self.assertEqual(r["gap"], "G3b,G5,G10")
+        self.assertEqual(r["gap"], "G3b,G5,G9,G10")
         self.assertEqual(r["verify"][0]["observed_at_base"]["count"], 3)
         self.assertEqual(r["verify"][0]["source"]["kind"], "dryrun")
 
@@ -400,7 +402,7 @@ class TestDryRun(QualifyCase):
         seed = self.seed(repo, suite, gap="G2,G3,G4,G5")
         r = qualify.qualify(repo, seed=seed, evdir=self.evdir())
         self.assertEqual(r["status"], "partial")
-        self.assertEqual(r["gap"], "G3b,G5,G10")
+        self.assertEqual(r["gap"], "G3b,G5,G9,G10")
 
     def test_poisoned_hook_escape_is_proven_by_an_ab_commit(self):
         repo, _ = self.repo(files={"README.md": "# r\n",

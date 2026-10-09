@@ -26,6 +26,24 @@ from settings import (DEPLOY_MODE, NATIVE_PREPARE_COMMANDS, NATIVE_SUITE_COMMAND
 class Hold(Exception):
     """A check that cannot run. Never a pass."""
 
+# Kernel-namespaced configuration the launch env carries (settings.py consumes
+# it at import). A candidate repo whose suite reads env-dependent config must
+# never see these values — they leak the kernel's launch decisions into the
+# measurement (2026-10-09 incident: MERGE_MODE=review false-REDed a suite that
+# compared it against 'success'). Denylist, not whitelist: suites legitimately
+# need PATH/HOME/LANG/etc.
+_KERNEL_ENV_EXACT = frozenset((
+    "MERGE_MODE", "TASK_KIND", "DEPLOY_MODE", "PRODUCT_REPO", "GITHUB_REPO",
+    "CODE_PATHS", "SCENARIOS_DIR", "COST_CEILING_USD", "CHECKOUT_CHAR_BUDGET"))
+_KERNEL_ENV_PREFIXES = ("FACTORY_", "NTFY_", "NIGHTSHIFT_", "SURPLUS_",
+                        "IMPLEMENTER_", "REVIEWER_", "QUALIFIER_")
+
+def candidate_env():
+    """The launch env minus every kernel-config variable, for candidate-repo argv."""
+    return {k: v for k, v in os.environ.items()
+            if k not in _KERNEL_ENV_EXACT
+            and not k.startswith(_KERNEL_ENV_PREFIXES)}
+
 def _tap_test_count(output):
     """One authoritative Node TAP total; missing/duplicate/invalid is unknown."""
     totals = re.findall(r"^# tests[ \t]+([^\r\n]*)$", output, re.M)
@@ -90,7 +108,7 @@ def _run_native_commands(commands, cwd, suite_command=None, evidence_dir=None,
         with open(paths["stdout"], "w") as stdout, open(paths["stderr"], "w") as stderr:
             try:
                 r = subprocess.run(argv, cwd=cwd, stdout=stdout, stderr=stderr,
-                                   timeout=limit)
+                                   timeout=limit, env=candidate_env())
                 row["exit"] = r.returncode
                 if r.returncode != 0:
                     row["status"] = "fail"
@@ -131,7 +149,8 @@ def run_unit_tests(cwd):
         cmd = ["python3", "-m", "unittest", "discover", "-s", "tests"]
     else:
         cmd = ["python3", "-m", "unittest", "discover", "-s", ".", "-p", "*_test.py"]
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=600)
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=600,
+                       env=candidate_env())
     out = (r.stdout + r.stderr)[-8000:]
     m = re.search(r"Ran (\d+) test", out)
     ran = int(m.group(1)) if m else 0
@@ -159,7 +178,7 @@ def free_port(prefer=None):
 
 def boot_candidate(cwd, port, pid_file, env_extra=None):
     """Boot `python3 app.py` with cwd = candidate checkout, PID-file ownership."""
-    env = dict(os.environ)
+    env = candidate_env()
     env.pop(PROVENANCE_ENV, None)
     env["FACTORY_PORT"] = str(port)
     if env_extra:
@@ -328,7 +347,8 @@ def evaluate_exec_assertion(assertion, cwd):
     }
     try:
         r = subprocess.run(assertion["argv"], cwd=cwd,
-                            capture_output=True, text=True, timeout=600)
+                            capture_output=True, text=True, timeout=600,
+                            env=candidate_env())
     except OSError as e:
         return dict(result, status="HOLD", detail="cannot run: %s" % e)
     except subprocess.TimeoutExpired as e:

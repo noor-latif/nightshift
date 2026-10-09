@@ -608,6 +608,40 @@ class TestExecOracle(unittest.TestCase):
         self.assertEqual(kinds, {"exec", "GET"})
 
 class TestNativeBoundary(unittest.TestCase):
+    def test_candidate_suite_never_sees_kernel_env(self):
+        # 2026-10-09 incident: MERGE_MODE=review leaked from the launch env
+        # into a candidate suite that compared it against 'success' and
+        # false-REDed. Every candidate-argv execution gets the scrubbed env.
+        import unittest.mock as mock
+
+        probe = ("import os\n"
+                 "leaked = [k for k in ('MERGE_MODE', 'TASK_KIND', 'DEPLOY_MODE',\n"
+                 "                      'FACTORY_NATIVE_CONFIG', 'NTFY_TOPIC',\n"
+                 "                      'NIGHTSHIFT_RECIPES_DIR',\n"
+                 "                      'SURPLUS_INTELLIGENCE_API_KEY',\n"
+                 "                      'IMPLEMENTER_MODEL') if k in os.environ]\n"
+                 "if leaked:\n"
+                 "    raise SystemExit('leaked: %s' % leaked)\n"
+                 "if not os.environ.get('PATH'):\n"
+                 "    raise SystemExit('PATH scrubbed')\n"
+                 "print('# tests 1')\n")
+        suite = [sys.executable, "-c", probe]
+        kernel_env = {"MERGE_MODE": "review", "TASK_KIND": "bug",
+                      "DEPLOY_MODE": "app", "FACTORY_NATIVE_CONFIG": "{}",
+                      "NTFY_TOPIC": "t", "NIGHTSHIFT_RECIPES_DIR": "/tmp/r",
+                      "SURPLUS_INTELLIGENCE_API_KEY": "x",
+                      "IMPLEMENTER_MODEL": "m"}
+        with tempfile.TemporaryDirectory() as cwd:
+            with mock.patch.dict(os.environ, kernel_env):
+                status, rows = verify._run_native_commands([suite], cwd, suite)
+            self.assertEqual(status, "pass", rows[0]["output"])
+            # and the denylist is exactly that: PATH/HOME survive the scrub
+            scrubbed = verify.candidate_env()
+            for k in kernel_env:
+                self.assertNotIn(k, scrubbed)
+            self.assertTrue(scrubbed.get("PATH"))
+            self.assertIn("HOME", scrubbed)
+
     def test_only_designated_suite_requires_authoritative_positive_total(self):
         # guard argv must stay distinct from every suite argv, or the
         # designated-exactly-once check rejects the fixture (not the contract).

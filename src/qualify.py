@@ -436,7 +436,8 @@ def _remove_worktree(repo, path):
 
 
 def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
-            evdir, env, *, netns=False, probe=None, hooks_ab=True, hooks_poisoned=False):
+            evdir, env, *, netns=False, probe=None, hooks_ab=True,
+            hooks_present=True, hooks_poisoned=False):
     """G1-G6, G3b, G9. All in ONE throwaway worktree at the pinned base."""
     gates, worktree = {}, None
     worktree = os.path.join(tempfile.mkdtemp(prefix="nightshift-qualify-"), "wt")
@@ -533,8 +534,11 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
         # Last, because its probes add empty commits to the throwaway HEAD and
         # a suite that reads `git rev-parse HEAD` (flox's FLOX_VERSION does)
         # must not be measured after that.
-        if not hooks_poisoned:
-            gates["G9"] = "pass"          # nothing to neutralise
+        if not hooks_present:
+            gates["G9"] = "skip(no-hooks)"   # no A/B is possible: both legs would pass
+            hook_finding = None
+        elif not hooks_poisoned:
+            gates["G9"] = "pass"          # hooks installed, none of the poisoned class
             hook_finding = None
         elif not hooks_ab:
             gates["G9"], hook_finding = "skip", None
@@ -943,7 +947,8 @@ def qualify(repo, *, seed=None, chain=(), use_agent=False, netns=False, probe=Fa
             merged.setdefault("abstain", True)
             merged.setdefault("gap", proposal.get("gap"))
         for key in ("prepare", "verify", "env", "traps", "code_roots", "oracle",
-                    "adapter", "collection_probe", "runner_gap", "suite_runner"):
+                    "adapter", "collection_probe", "runner_gap", "suite_runner",
+                    "network"):
             if proposal.get(key) and not merged.get(key):
                 merged[key] = proposal[key]
         for key in ("suite_index", "suite_timeout_s", "deploy_mode",
@@ -981,6 +986,7 @@ def qualify(repo, *, seed=None, chain=(), use_agent=False, netns=False, probe=Fa
                                         suite_timeout_s, evdir, env, netns=netns,
                                         probe=merged.get("collection_probe") if probe else None,
                                         hooks_ab=hooks_ab,
+                                        hooks_present=bool(checks["hooks"]["hooks"]),
                                         hooks_poisoned=checks["hooks"]["poisoned"])
             gate.update(ran)
             if hook_finding:

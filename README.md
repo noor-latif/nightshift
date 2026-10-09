@@ -101,9 +101,11 @@ are emitted commented out: they are the operator's to author, never the model's.
 
 Honest limits of the gate table, today: a `skip` caused by G3 failing carries the
 blocked-by marker `skip(G3)`, but a skip for an absent input (no `--netns`, no
-`--probe`) still does not say *why*; G9 passes vacuously on a clone with no
-installed hooks; and the `network` field the qualifier prompt asks for is
-**derived** from `--netns`, never taken from the proposal. Read `gate` as
+`--probe`) still does not say *why*. G9 never passes vacuously: a clone with no
+installed hooks reports `skip(no-hooks)` — the A/B would pass both legs — and a
+clone with hooks but no escape env reports `skip`. The `network` field flows
+through from the qualifier proposal when the operator seed does not pin one;
+it stays seed > proposal > `--netns`-derived > `unknown`. Read `gate` as
 "measured green" only where it says `pass` **and** the corresponding receipt
 exists under the evidence dir.
 
