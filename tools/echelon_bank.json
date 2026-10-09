@@ -1,0 +1,29 @@
+{
+ "commit": "b566cd065ca30cb1fbdd4310cc18038ce840dbfe",
+ "locked_at": "2026-10-09T18:58:04",
+ "verdicts": {
+  "repos/factory-docs/p3-matrix-rerun/A1.review.txt": "accept",
+  "repos/factory-docs/p3-matrix-rerun/A2.review.txt": "accept",
+  "repos/factory-docs/p3-matrix-rerun/R3.review.txt": "reject",
+  "repos/factory-docs/p3-matrix-rerun/R4b.review.txt": "reject",
+  "repos/factory-docs/p3-matrix-rerun/R4c.review.txt": "reject",
+  "repos/factory-docs/p3-matrix-rerun/R5.review.txt": "reject",
+  "repos/factory-docs/p3-matrix-rerun/kormo9003.review.txt": "reject",
+  "repos/factory-docs/p3-matrix-rerun/nvx66.review.txt": "accept",
+  "repos/factory-spike/state/evidence/20260930T080318-issue-1/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20260930T081144-issue-3/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20260930T081848-issue-5/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261003T110046-issue-9003/review.txt": "reject",
+  "repos/factory-spike/state/evidence/20261003T210514-issue-9001/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261003T220742-issue-1/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261003T221603-issue-3/review.txt": "reject",
+  "repos/factory-spike/state/evidence/20261003T222431-issue-4/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261003T222809-issue-5/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261003T223034-issue-1/review.txt": "reject",
+  "repos/factory-spike/state/evidence/20261006T200813-issue-3619/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261007T102020-issue-3619/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261007T140829-issue-4001/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261009T055238-issue-9702/review.txt": "accept",
+  "repos/factory-spike/state/evidence/20261009T060254-issue-9702/review.txt": "accept"
+ }
+}
