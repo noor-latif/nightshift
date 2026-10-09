@@ -1,0 +1,9 @@
+EVIDENCE:                     "network"):
+JUDGMENT: PASS
+EVIDENCE:             if proposal.get(key) and not merged.get(key):
+JUDGMENT: PASS
+EVIDENCE:         "network": merged.get("network", "loopback" if netns else "unknown"),
+JUDGMENT: PASS
+EVIDENCE: +                    "network"):
+JUDGMENT: PASS
+VERDICT: accept

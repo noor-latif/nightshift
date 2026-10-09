@@ -1,0 +1,7 @@
+1. **PASS** — `peek()` with `maxlen=0` stores the first source item in `_peeked` and returns it repeatedly.
+2. **PASS** — `__next__` yields `_peeked` before advancing `_source`, preserving all items in order.
+3. **PASS** — `__bool__` calls `peek()`, which buffers the item in `_peeked` without consuming it from the seekable.
+4. **PASS** — Exhaustion in the `maxlen=0` branch raises or returns the default, allowing `bool(seekable([], maxlen=0))` to be `False`.
+5. **PASS** — `maxlen=0` uses `deque([], 0)`, so `elements()` remains empty; the changes for other cache sizes are inactive.
+
+VERDICT: accept

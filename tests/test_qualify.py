@@ -311,6 +311,42 @@ class TestDryRun(QualifyCase):
         seed = self.seed(repo, suite, **kw.pop("seed_over", {}))
         return repo, qualify.qualify(repo, seed=seed, evdir=ev, **kw)
 
+    def test_candidate_commands_never_see_kernel_env(self):
+        # qualify ran candidate-repo argv with the full launch env (four
+        # dict(os.environ) sites) — the gateway key and launch-config vars
+        # reached prepare/verify/probes. Every ambient-env consumer now goes
+        # through verify.candidate_env(); the recipe's OWN declared env
+        # (seed["env"]) is trusted operator config and still wins.
+        import unittest.mock as mock
+
+        probe = ("#!/usr/bin/env python3\n"
+                 "import os, sys\n"
+                 "leaked = [k for k in ('SURPLUS_INTELLIGENCE_API_KEY',\n"
+                 "                      'MERGE_MODE', 'FACTORY_NATIVE_CONFIG')\n"
+                 "          if k in os.environ]\n"
+                 "if leaked:\n"
+                 "    sys.stderr.write('leaked: %s' % leaked)\n"
+                 "    sys.exit(3)\n"
+                 "if not os.environ.get('PATH'):\n"
+                 "    sys.exit(4)\n"
+                 "sys.exit(0)\n")
+        repo = self.suite_repo()
+        ev = self.evdir()
+        seed = self.seed(repo, "suite.sh")
+        seed["env"] = {"QUALIFY_PROBE_OK": "1"}  # recipe-declared env still passes through
+        probe = probe + ("if not os.environ.get('QUALIFY_PROBE_OK'):\n"
+                         "    sys.exit(5)\n")
+        bad = _write(os.path.join(self.tmp, "probe.sh"), probe, 0o755)
+        seed["verify"] = [{"argv": [bad], "timeout_s": 60, "expect_at_base": "red"}]
+        kernel_env = {"SURPLUS_INTELLIGENCE_API_KEY": "x", "MERGE_MODE": "review",
+                      "FACTORY_NATIVE_CONFIG": "{}", "QUALIFY_PROBE_OK": "1"}
+        with mock.patch.dict(os.environ, kernel_env):
+            r = qualify.qualify(repo, seed=seed, evdir=ev)
+        receipt = r["verify"][0]["observed_at_base"]
+        # exit 3 = the probe saw a kernel var (leak); 4 = PATH scrubbed; 5 =
+        # the recipe-declared env did not survive. 3 must NOT happen.
+        self.assertEqual(receipt["exit"], 0, receipt)
+
     def test_full_deterministic_pass_reaches_partial(self):
         repo, r = self._run()
         self.assertEqual(r["status"], "partial")

@@ -1,0 +1,5 @@
+- Criterion 1: PASS — `dims == 0` now returns before indexing `lengths_desc[0]`, so `list(interleave_evenly([]))` is empty.
+- Criterion 2: PASS — The same `dims == 0` guard handles `list(interleave_evenly([], lengths=[]))`.
+- Criterion 3: PASS — The guard only affects zero-dimensional input; non-empty inputs continue through the existing interleaving algorithm unchanged.
+
+VERDICT: accept

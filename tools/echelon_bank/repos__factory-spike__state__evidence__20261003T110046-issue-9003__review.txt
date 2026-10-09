@@ -1,0 +1,10 @@
+1. **PASS** — The diff creates `index.html`, `styles.css`, and `page.js` at the repository root, with no other changed files.
+2. **PASS** — `index.html` uses relative `styles.css` and `page.js` references and contains no remote font, script, image, or stylesheet.
+3. **PASS** — The document has `lang="sv"`, one `<h1>`, `<header>`, `<main>`, `<footer>`, and a title containing “Körmotorn”.
+4. **PASS** — The page includes `mailto:hej@kormotorn.se`, the GitHub source URL, and links to `docs/VISION.md`, `docs/ROADMAP.md`, and `LICENSE`.
+5. **PASS** — The skip link targets `#main`, and `.nav-toggle` is a button with `aria-expanded="false"`.
+6. **PASS** — `styles.css` provides the visual design, while `page.js` implements language switching, mobile-menu state and Escape/section closing, plus reduced-motion handling.
+7. **FAIL** — The page makes unsupported guarantee/pricing claims, including “Ingen leverantör kan låsa in dig eller höja hyran” and “betalt från dag ett,” despite the requirement for no guarantees or prices.
+8. **PASS** — The implementation uses standalone vanilla HTML/CSS/JavaScript with no third-party libraries or copied external code referenced.
+
+VERDICT: reject

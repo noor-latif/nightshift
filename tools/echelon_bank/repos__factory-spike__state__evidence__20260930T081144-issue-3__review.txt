@@ -1,0 +1,25 @@
+**Criterion 1: `.qualify(criterion)` builder method on QueryBuilder — PASS**
+Diff adds `@builder def qualify(self, criterion: Union[Term, EmptyCriterion]) -> "QueryBuilder"` in `QueryBuilder` (pypika/queries.py, after `having`), matching the chained style of `.where`/`.having`; accessible from all `Query.*` entry points since they return `QueryBuilder`.
+
+**Criterion 2: QUALIFY clause rendered after FROM — PASS**
+In `get_sql`, `if self._qualifies: querystring += self._qualify_sql(**kwargs)` is placed after `_from_sql` (and after WHERE/GROUP BY/HAVING), and `_qualify_sql` renders `" QUALIFY {qualify}"`, so a window criterion like `RANK() OVER(PARTITION BY ...)` (supported by `AnalyticFunction.get_function_sql`) appears after FROM.
+
+**Criterion 3: Multiple criteria joined with `&` inside one QUALIFY — PASS**
+`qualify` does `self._qualifies &= criterion` when `self._qualifies` exists, producing a `ComplexCriterion` with `Boolean.and_`; only a single `_qualify_sql` call is emitted, so criteria render as `...>1 AND ...>2` in one clause.
+
+**Criterion 4: QUALIFY works after GROUP BY — PASS**
+In `get_sql`, `self._groupbys` → `_group_sql` is emitted before the qualify block, so `GROUP BY "foo" QUALIFY "bar">1` renders in that order.
+
+**Criterion 5: Dialect-specific quoting — PASS**
+`_qualify_sql` forwards `quote_char` into `self._qualifies.get_sql(...)`, and `Field.get_sql` / `format_quotes` use the dialect's `QUOTE_CHAR` (backticks for `MySQLQueryBuilder`, `"` for Vertica/MSSQL/PostgreSQL/Redshift, `None` → unquoted for `OracleQueryBuilder`).
+
+**Criterion 6: Empty criterion is a no-op — PASS**
+`qualify` begins with `if isinstance(criterion, EmptyCriterion): return`, and `_qualifies` remains `None` so the clause is omitted from output.
+
+**Criterion 7: Table rename carries qualify criteria — PASS**
+`replace_table` includes `self._qualifies = self._qualifies.replace_table(current_table, new_table) if self._qualifies else None`, mirroring the `_havings` handling; `Criterion` subclasses (e.g. `BasicCriterion`) implement `replace_table`.
+
+**Criterion 8: Existing test suite stays green — PASS**
+The change is purely additive: a new `None`-initialized attribute, a new builder method, a new SQL fragment guarded by `if self._qualifies:`, and a `replace_table` line guarded by a truthiness check. The only other edit is a cosmetic blank line inside `groupby`. No existing behavior path is altered, so no plausible breakage.
+
+VERDICT: accept

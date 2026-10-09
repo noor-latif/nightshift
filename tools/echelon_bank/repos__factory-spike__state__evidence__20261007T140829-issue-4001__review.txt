@@ -1,0 +1,13 @@
+EVIDENCE: # treat "OFFSET x ROWS FETCH NEXT y ROWS ONLY" as a single clause;
+JUDGMENT: PASS
+EVIDENCE: tlist.insert_before(token, self.nl(token_indent))
+JUDGMENT: PASS
+EVIDENCE: tlist.insert_before(token, self.nl(token_indent))
+JUDGMENT: PASS
+EVIDENCE: if token and token.normalized == 'ONLY':
+JUDGMENT: PASS
+EVIDENCE: diff --git a/sqlparse/filters/aligned_indent.py b/sqlparse/filters/aligned_indent.py
+JUDGMENT: PASS
+EVIDENCE: diff --git a/sqlparse/filters/aligned_indent.py b/sqlparse/filters/aligned_indent.py
+JUDGMENT: PASS
+VERDICT: accept

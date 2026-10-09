@@ -1,0 +1,19 @@
+Criterion 1 — POST /paste?x=1 with {"content": "hello"} returns 201 with an id
+EVIDENCE: path = urllib.parse.urlsplit(self.path).path
+        if path != "/paste":
+JUDGMENT: PASS
+
+Criterion 2 — GET /paste/<id>?v=1 returns 200 with that content
+EVIDENCE: elif path.startswith("/paste/"):
+            content = self.store.get(path[len("/paste/"):])
+JUDGMENT: PASS
+
+Criterion 3 — POST /paste?x=1 with a non-JSON body still returns 400
+EVIDENCE: self._send_json(400, {"error": "invalid JSON body"})
+JUDGMENT: PASS
+
+Criterion 4 — Existing tests pass
+EVIDENCE: path = urllib.parse.urlsplit(self.path).path
+JUDGMENT: PASS
+
+VERDICT: accept

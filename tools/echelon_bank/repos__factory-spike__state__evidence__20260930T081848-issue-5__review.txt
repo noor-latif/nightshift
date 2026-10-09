@@ -1,0 +1,7 @@
+**Criterion 1 — Empty array renders as '{}' with PostgreSQL/Redshift dialect: PASS**
+Evidence: In the diff, when `not self.values and dialect in (Dialects.POSTGRESQL, Dialects.REDSHIFT)`, `sql = format_quotes("{}", kwargs.get("secondary_quote_char") or "'")`, which yields `'{}'` (a quoted empty-array literal) instead of the invalid `ARRAY[]`, and this is passed through `format_alias_sql` — matching the required `'{}'` rendering.
+
+**Criterion 2 — Non-empty arrays unchanged: PASS**
+Evidence: The else branch retains the original code verbatim: `values = ",".join(term.get_sql(**kwargs) for term in self.values)` followed by `("ARRAY[{}]" if dialect in (Dialects.POSTGRESQL, Dialects.REDSHIFT) else "[{}]").format(values)`, so all non-empty arrays (and empty arrays under non-PG dialects) produce identical output to before the diff.
+
+VERDICT: accept

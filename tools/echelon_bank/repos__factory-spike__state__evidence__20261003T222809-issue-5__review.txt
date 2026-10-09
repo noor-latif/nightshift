@@ -1,0 +1,5 @@
+- PASS — `__reversed__` now returns an empty iterator when `not self`, so `list(reversed(numeric_range(0)))` is `[]`.
+- PASS — For non-empty ranges, the existing reversal logic remains unchanged after the new early return.
+- PASS — The change is narrowly scoped to empty-range reversal and shows no plausible regression to the existing test suite.
+
+VERDICT: accept

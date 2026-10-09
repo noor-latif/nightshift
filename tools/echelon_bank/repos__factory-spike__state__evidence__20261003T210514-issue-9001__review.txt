@@ -1,0 +1,6 @@
+- PASS — `greet.py` returns `"Hello, " + name`, so `greet("noor")` returns exactly `"Hello, noor"`.
+- PASS — The current implementation is `return "Hello, " + name` for any string `name`.
+- PASS — The diff changes only `greet.py`; `tests/test_greet.py` is not modified.
+- PASS — The one-line capitalization change preserves the tested behavior, so the suite has no plausible breakage and should report 1 passed.
+
+VERDICT: accept

@@ -1,0 +1,8 @@
+1. **PASS** — `__contains__` searches via `_get_values`, whose `.get(value)` lookup does not insert absent keys; iteration therefore reports only cached keys actually produced.
+2. **PASS** — `list(D[30])` exhausts `_get_values` without creating an entry for an absent key, so `__iter__` leaves the reported key set unchanged.
+3. **PASS** — Even when `_validator(30)` is true, `_get_values` only inserts keys when matching source items are found; absent `30` is not added.
+4. **PASS** — Repeated absent-key membership checks use `.get()` and do not mutate `_cache`.
+5. **FAIL** — After a key is fully consumed, `_cache` retains it via `setdefault`, so `k in list(D)` is `True`, but `__contains__` returns `False` when `next(self[value])` raises `StopIteration`.
+6. **PASS** — Matching items found directly from the source call `self._cache.setdefault(value, deque())`, preserving the key after its items are consumed.
+
+VERDICT: reject

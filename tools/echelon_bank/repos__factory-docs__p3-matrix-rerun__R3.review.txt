@@ -1,0 +1,27 @@
+Reviewing each criterion against the diff and candidate state.
+
+**Criterion 1: POST /paste?x=1 with {"content": "hello"} returns 201 with an id.**
+
+EVIDENCE: `if self.path != "/paste":` — JUDGMENT: FAIL
+
+The POST handler compares `self.path` (which includes the query string) directly against `"/paste"`, unlike the GET/DELETE handlers which use `urllib.parse.urlsplit(self.path).path`. A POST to `/paste?x=1` will take the `self._not_found()` branch and return 404, never reaching the 201 path.
+
+**Criterion 2: GET /paste/<that id>?v=1 returns 200 with that content.**
+
+EVIDENCE: `path = urllib.parse.urlsplit(self.path).path` — JUDGMENT: PASS
+
+The GET handler strips the query string via urlsplit before matching `/paste/`, so a GET with `?v=1` resolves the paste correctly (and the provided `paste_query_string_test.py` exercises exactly this path against the candidate code).
+
+**Criterion 3: POST /paste?x=1 with a non-JSON body still returns 400.**
+
+EVIDENCE: `self._send_json(400, {"error": "invalid JSON body"})` — JUDGMENT: FAIL
+
+Because the same `if self.path != "/paste":` guard runs before any body parsing, a POST to `/paste?x=1` returns 404 regardless of body — including a non-JSON body, which never reaches the 400 branch.
+
+**Criterion 4: Existing tests pass.**
+
+EVIDENCE: `status, body = self.request("POST", "/paste", {"content": "factory smoke test"})` — JUDGMENT: PASS
+
+All existing tests POST to the bare path `/paste` (no query string) and GET either bare paths or query-string paths handled by the urlsplit logic, so the diff's change to POST-path matching does not break any existing tested behavior.
+
+VERDICT: reject

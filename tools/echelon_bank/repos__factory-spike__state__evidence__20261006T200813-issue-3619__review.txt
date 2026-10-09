@@ -1,0 +1,7 @@
+1. **PASS** — `format_version_lines` computes a shared `column_width` from all version strings and pads annotated lines with `"{version_line:<column_width$}"`.
+2. **PASS** — The existing sorted `available_systems` list is preserved and joined unchanged via `Some(available_systems.join(", "))`.
+3. **PASS** — The header remains unchanged, version lines retain four-space indentation, unannotated versions use `None`, and iteration preserves server result order.
+4. **PASS** — The diff only changes `cli/flox/src/commands/show.rs`, with formatting confined to `render_show_catalog` and its helper.
+5. **PASS** — The added regression test compiles against the shown imports and validates the expected aligned output; no existing behavior is plausibly broken.
+
+VERDICT: accept

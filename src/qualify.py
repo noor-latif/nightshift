@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import agent  # noqa: E402
 import settings  # noqa: E402
-from verify import _SUITE_COUNTERS  # noqa: E402  (one definition of the count contract)
+from verify import _SUITE_COUNTERS, candidate_env  # noqa: E402  (one definition of the count contract; one scrubber)
 
 SCHEMA = "nightshift.recipe/1"
 
@@ -443,8 +443,8 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
     worktree = os.path.join(tempfile.mkdtemp(prefix="nightshift-qualify-"), "wt")
     try:
         _throwaway_worktree(repo, base, worktree)
-        run_env = dict(os.environ)
-        run_env.update(env)
+        run_env = candidate_env()
+        run_env.update(env)  # the recipe's own declared env is trusted operator config and wins
 
         # ---- G1: prepare dry-run ------------------------------------------
         ok = True
@@ -584,10 +584,10 @@ def _hooks_ab(worktree, env, evdir):
     # (a) config absent: the documented failure state
     if had_config is not None:
         os.remove(config)
-    without = dict(os.environ)
+    without = candidate_env()
     without.pop("PRE_COMMIT_ALLOW_NO_CONFIG", None)
-    with_ = dict(os.environ)
-    with_.update(env)
+    with_ = candidate_env()
+    with_.update(env)  # recipe-declared env wins; ambient launch env stays scrubbed
     a = _commit_probe(worktree, ident, without, evdir, "g9-a", "Implement issue 0")
     b = _commit_probe(worktree, ident, with_, evdir, "g9-b", "Implement issue 0")
     gate = "pass" if (a["exit"] not in (0, None) and b["exit"] == 0) else "fail"

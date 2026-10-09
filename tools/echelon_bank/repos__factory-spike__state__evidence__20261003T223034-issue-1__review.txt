@@ -1,0 +1,6 @@
+- **FAIL** — `DEFAULT_RELEASE_REPOSITORY` is set to `microsoft/nvx`, but `scripts/nvx.py` cannot run because `scratrgs.scratch` causes a syntax error in `command_sandbox`.
+- **PASS** — `_release_platform()` still selects `linux-kvm` on Linux and `windows-whp` on Windows through the default `"auto"` hypervisor.
+- **PASS** — The `--repository` argument remains passed directly to `download_latest_release(args.repository, ...)`, preserving explicit repository overrides.
+- **FAIL** — The existing test suite cannot pass because `scripts/nvx.py` contains the invalid `scratrgs.scratch` syntax.
+
+VERDICT: reject

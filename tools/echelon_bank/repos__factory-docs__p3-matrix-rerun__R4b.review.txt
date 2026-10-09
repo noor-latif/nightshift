@@ -1,0 +1,25 @@
+Criterion-by-criterion review.
+
+**Criterion 1 — POST /paste without (or with empty) Content-Length returns 411 with "Content-Length required":**
+
+EVIDENCE: `length = int(self.headers.get("Content-Length") or 0)` — this is the `_read_body` in the provided candidate state of app.py; the file contents shown as the post-apply checkout do not contain the `_MissingContentLength` exception, the `raise _MissingContentLength` line, or the `self._send_json(411, {"error": "Content-Length required"})` branch that the diff adds.
+JUDGMENT: FAIL
+
+**Criterion 2 — POSTs with a correct Content-Length keep the existing 201/400 behavior:**
+
+EVIDENCE: `self._send_json(201, {"id": self.store.create(content)})` — the candidate app.py still parses the body, validates `content`, and returns 201 via the store exactly as before; the 400 invalid-JSON path (`self._send_json(400, {"error": "invalid JSON body"})`) is likewise untouched in the candidate state.
+JUDGMENT: PASS
+
+**Criterion 3 — GET requests are unaffected:**
+
+EVIDENCE: `if path == "/health":` — `do_GET` in the candidate app.py never calls `_read_body` and is unchanged, so no Content-Length check can affect GET /health or GET /paste/&lt;id&gt;.
+JUDGMENT: PASS
+
+**Criterion 4 — New unit test file covering criteria 1–3:**
+
+EVIDENCE: `def test_post_without_content_length_returns_411(self) -> None:` — the diff adds body_framing_test.py, which also contains `def test_post_with_correct_content_length_preserves_success_and_error_paths` and `def test_get_requests_do_not_require_content_length`, covering 411-on-missing/empty length, unchanged 201/400 paths, and GET behavior via a raw socket.
+JUDGMENT: PASS
+
+Note on the overall state: the diff and the provided candidate contents are inconsistent — the checkout's app.py still contains the pre-fix `_read_body`, so the 411 behavior the diff is supposed to introduce is not present in the candidate state as given. Criterion 1 is therefore broken in the candidate as it stands.
+
+VERDICT: reject

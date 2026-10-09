@@ -1,0 +1,9 @@
+EVIDENCE: DEFAULT_RELEASE_REPOSITORY = "microsoft/nvx"
+JUDGMENT: PASS
+EVIDENCE: return "whp" if os.name == "nt" else "kvm"
+JUDGMENT: PASS
+EVIDENCE: download_latest_release(args.repository, _release_platform(args.hypervisor))
+JUDGMENT: PASS
+EVIDENCE: +DEFAULT_RELEASE_REPOSITORY = "microsoft/nvx"
+JUDGMENT: PASS
+VERDICT: accept

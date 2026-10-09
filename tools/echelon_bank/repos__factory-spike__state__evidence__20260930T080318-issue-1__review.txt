@@ -1,0 +1,19 @@
+**Criterion 1 — time values in criteria (==, !=, <, >, <=, >=) render quoted isoformat, incl. aliased fields: PASS**
+Evidence: `ValueWrapper.get_formatted_value` now matches `isinstance(value, (date, time))` and returns `value.isoformat()`, which then hits the `str` branch and is wrapped via `format_quotes(value, quote_char)` with `secondary_quote_char` (default `'`), producing `'12:30:55'`; criteria wrap the right-hand side through `Term.wrap_constant` → `ValueWrapper`, and `Field.get_sql` independently handles table-alias namespaces.
+
+**Criterion 2 — `between` / `Field[a:b]` render quoted BETWEEN: PASS**
+Evidence: `Term.between` (and `__getitem__`, which delegates to `self.between(item.start, item.stop)`) wraps bounds via `self.wrap_constant(...)` → `ValueWrapper`, and `BetweenCriterion.get_sql` calls `self.start.get_sql(**kwargs)`/`self.end.get_sql(**kwargs)`, which route through the updated `get_formatted_value`.
+
+**Criterion 3 — `isin`/`notin` render each time quoted: PASS**
+Evidence: `Term.isin` builds `Tuple(*[self.wrap_constant(value) for value in arg])`, so each `time` becomes a `ValueWrapper` rendered via the new `(date, time)` branch; `notin` is `isin(...).negate()`, sharing the same rendering path.
+
+**Criterion 4 — INSERT renders time quoted: PASS**
+Evidence: `QueryBuilder._apply_terms` wraps each value with `self.wrap_constant(value)` (a `ValueWrapper`), and `_values_sql` renders each term via `term.get_sql(...)`, hitting the updated branch.
+
+**Criterion 5 — `date`/`datetime` rendering unchanged: PASS**
+Evidence: `datetime.datetime` is a subclass of `date`, so it matched `isinstance(value, date)` before and still matches `isinstance(value, (date, time))` (it is not a `time` instance); the branch body (`value.isoformat()` then quoted) is identical, so behavior is unchanged.
+
+**Criterion 6 — existing test suite stays green: PASS**
+Evidence: the diff is a minimal widening of a single `isinstance` check in `ValueWrapper.get_formatted_value`; `datetime.time` previously fell through to `str(value)` (unquoted) — an almost certainly undesired rendering with no plausible existing test asserting unquoted time output — and all other types take identical branches. No other code paths in the provided candidate state are touched.
+
+VERDICT: accept

@@ -1,0 +1,19 @@
+Criterion 1: POST /paste with {"content": ""} returns 400 with an error field and no id.
+EVIDENCE: `if not isinstance(content, str):` — an empty string IS a str, so `{"content": ""}` falls through to `self._send_json(201, {"id": self.store.create(content)})` and returns 201 with an id, not 400.
+JUDGMENT: FAIL
+
+Criterion 2: POST /paste with {"content": "x"} still returns 201 with an id.
+EVIDENCE: `self._send_json(201, {"id": self.store.create(content)})`
+JUDGMENT: PASS
+
+Criterion 3: POST /paste with {"content": 42} still returns 400; POST /paste with {} still returns 400.
+EVIDENCE: `self._send_json(400, {"error": "'content' must be a string"})`
+JUDGMENT: PASS
+
+Criterion 4: Existing tests pass.
+EVIDENCE: The diff touches only `+++ b/empty_content_test.py` (a new file); app.py's tested behaviors (201 creation, 404 routing, health, restart semantics) are unchanged in the current file contents, so no plausible breakage of existing tested behavior is introduced.
+JUDGMENT: PASS
+
+The diff adds only tests that assert empty-string rejection, but the application code in app.py accepts empty strings and mints pastes for them, so the new test `test_empty_string_content_is_rejected_with_400_and_no_id` would fail against this candidate state. The acceptance criteria are not met.
+
+VERDICT: reject

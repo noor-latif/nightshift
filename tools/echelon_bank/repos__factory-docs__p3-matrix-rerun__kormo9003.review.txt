@@ -1,0 +1,17 @@
+EVIDENCE: new file mode 100644
+JUDGMENT: PASS
+EVIDENCE: <link rel="stylesheet" href="styles.css">
+JUDGMENT: PASS
+EVIDENCE: <html lang="sv">
+JUDGMENT: PASS
+EVIDENCE: <li><a href="https://github.com/noor-latif/kormotorn" data-i18n="linkSource">Källkod på GitHub</a></li>
+JUDGMENT: PASS
+EVIDENCE: <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Öppna menyn">
+JUDGMENT: PASS
+EVIDENCE: if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+JUDGMENT: PASS
+EVIDENCE: Ingen leverantör kan låsa in dig eller höja hyran.
+JUDGMENT: FAIL
+EVIDENCE: var lang = "sv";
+JUDGMENT: PASS
+VERDICT: reject

@@ -1,0 +1,13 @@
+EVIDENCE: `path = urllib.parse.urlsplit(self.path).path` (in do_POST) — `if path != "/paste": self._not_found()` now compares only the path component, so POST /paste?x=1 routes to the paste handler, which returns `self._send_json(201, {"id": self.store.create(content)})` for a valid body.
+JUDGMENT: PASS
+
+EVIDENCE: `path = urllib.parse.urlsplit(self.path).path` (in do_GET) — GET /paste/<id>?v=1 already strips the query string before matching `path.startswith("/paste/")`, so it returns `self._send_json(200, {"content": content})`.
+JUDGMENT: PASS
+
+EVIDENCE: `except (ValueError, UnicodeDecodeError): self._send_json(400, {"error": "invalid JSON body"})` — a non-JSON body still hits the 400 branch in do_POST; the diff only changes routing, not body parsing.
+JUDGMENT: PASS
+
+EVIDENCE: `path = urllib.parse.urlsplit(self.path).path` — the change only broadens accepted URLs for POST /paste (previously the query string caused a 404, which no existing test asserts); all existing test paths like `/paste`, `/paste/<id>`, `/health`, and DELETE routes are unchanged in behavior.
+JUDGMENT: PASS
+
+VERDICT: accept

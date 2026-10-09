@@ -1,0 +1,11 @@
+EVIDENCE: for _ in version_string.len()..column_width {
+JUDGMENT: PASS
+EVIDENCE: Some(available_systems.join(", "))
+JUDGMENT: PASS
+EVIDENCE: println!("{pkg_path} - {description}");
+JUDGMENT: PASS
+EVIDENCE: diff --git a/cli/flox/src/commands/show.rs b/cli/flox/src/commands/show.rs
+JUDGMENT: PASS
+EVIDENCE: assert_eq!(rendered, expected);
+JUDGMENT: PASS
+VERDICT: accept

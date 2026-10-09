@@ -1,0 +1,29 @@
+**Criterion 1** — POST /paste with valid JSON body and missing/empty Content-Length returns 411 with "Content-Length required".
+
+EVIDENCE: `length = int(self.headers.get("Content-Length") or 0)`
+JUDGMENT: FAIL
+
+The diff's `_read_body` fix (raising `ContentLengthRequiredError`) and the new `except ContentLengthRequiredError: self._send_json(411, ...)` block are NOT present in the candidate state of app.py — the file still contains the original code that coerces a missing header to length 0 and falls through to the `400 {"error": "invalid JSON body"}` path. The diff and the checkout contents disagree, and per the review rules the current file contents are the candidate as it stands.
+
+**Criterion 2** — Any POST carrying a correct Content-Length behaves exactly as before (201/400 unchanged).
+
+EVIDENCE: `return self.rfile.read(length).decode("utf-8")`
+JUDGMENT: PASS
+
+The candidate's POST path (`_read_body`, `json.loads`, the 201/400 branches) is byte-for-byte the pre-diff code, so behavior with a valid `Content-Length` is unchanged. No existing tested behavior is plausibly broken.
+
+**Criterion 3** — GET requests are unaffected (no 411 on GET /health or GET /paste/<id>).
+
+EVIDENCE: `def do_GET(self) -> None:`
+JUDGMENT: PASS
+
+`do_GET` never calls `_read_body` and is untouched in the candidate state, so GET /health (200) and GET /paste/<id> behave exactly as before.
+
+**Criterion 4** — New unit test file covering criteria 1–3.
+
+EVIDENCE: `def test_post_without_content_length_returns_411(self) -> None:`
+JUDGMENT: PASS
+
+The diff adds `content_length_test.py`, which covers criterion 1 (raw socket request without the header, and the `http.client` `"Content-Length": ""` suppression probe), criterion 2 (201 with correct length, 400 with non-JSON body), and criterion 3 (GET /health and GET /paste/<id>). The test file is present in the diff as required.
+
+VERDICT: reject
