@@ -118,6 +118,9 @@ clones/workspaces (`~/nightshift`, trial workspaces) are not it.
     set -a; . env.sh; set +a          # export the lap env first (caller-owned)
     scripts/run-lap.sh <issue-number> # detached; prints lap pid, pidfile, log, progress/stop cmds
 
+On a first run, copy `env.example.sh` to `env.sh` and fill it in (the template
+lists every variable the lap reads, with its default).
+
 Paid laps go through `scripts/run-lap.sh`, never a bare `python3 src/lap.py`:
 the launcher `setsid`+`nohup`s the child into its own session, so an agent
 command timeout kills the launcher, not the open model stream. **NEVER wrap a
