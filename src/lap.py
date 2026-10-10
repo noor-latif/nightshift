@@ -1,4 +1,4 @@
-"""Lap: one issue through the full chain (the wiring between the six modules).
+"""Lap: one issue through the full chain (the wiring between the nine modules).
 
 Runs as a child process of supervisor.py: `python3 src/lap.py <issue>`.
 Chain: worktree from origin/main -> implementer -> apply diff ->
@@ -46,7 +46,6 @@ from settings import (
     GITHUB_REPO,
     HEARTBEAT_PATH,
     IMPLEMENTER_MAX_TOKENS,
-    IMPLEMENTER_MAX_TOKENS_FIELD,
     IMPLEMENTER_API,
     IMPLEMENTER_MODEL,
     IMPLEMENTER_REASONING_EFFORT,
@@ -57,7 +56,6 @@ from settings import (
     TASK_FILE,
     PRODUCT_REPO,
     REVIEWER_MAX_TOKENS,
-    REVIEWER_MAX_TOKENS_FIELD,
     REVIEWER_API,
     REVIEWER_REASONING_EFFORT,
     REVIEWER_MODEL,
@@ -816,7 +814,6 @@ def run(issue):
             max_tokens=IMPLEMENTER_MAX_TOKENS,
             api=IMPLEMENTER_API,
             reasoning_effort=IMPLEMENTER_REASONING_EFFORT,
-            max_tokens_field=IMPLEMENTER_MAX_TOKENS_FIELD,
             trace_dir=os.path.join(lap.evdir, "traces"),
             call_id="%s-implementer" % lap.run_id)
         view_observation = prompt_view_discrepancy(files, r.get("usage"))
@@ -869,7 +866,6 @@ def run(issue):
                                                 brief=design_brief_from(data["body"]))}],
             REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS,
             api=REVIEWER_API, reasoning_effort=REVIEWER_REASONING_EFFORT,
-            max_tokens_field=REVIEWER_MAX_TOKENS_FIELD,
             trace_dir=os.path.join(lap.evdir, "traces"),
             call_id="%s-reviewer" % lap.run_id)
         lap.add_cost(rev["usage"], "reviewer")

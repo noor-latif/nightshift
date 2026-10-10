@@ -11,7 +11,7 @@ import time
 
 from settings import CLAIMS_DIR, LAP_WALLCLOCK_LIMIT_S, RETRY_BUDGET
 
-OUTCOMES = ("success", "success-close-failed", "failure", "timeout", "crash", "queue-empty",
+OUTCOMES = ("success", "success-close-failed", "failure", "timeout", "crash",
             "apply_incomplete", "awaiting-review", "abstain")
 # Dispositions that are final: never re-claimed, never retried. awaiting-review
 # is terminal-by-design (review mode: the owner merge decision is pending), so
@@ -128,8 +128,6 @@ def handle_outcome(outcome, issue, state, now):
         # reconcile cannot re-dispatch what the owner has not reviewed.
         rec["disposition"] = "awaiting-review"
         return "awaiting-review"
-    if outcome == "queue-empty":
-        return "idle"
     if outcome == "abstain":
         # Reviewer escalation, not an implementer failure: terminal like
         # awaiting-review. Deliberately does NOT touch rec["retries"] — an

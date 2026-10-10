@@ -129,25 +129,6 @@ def stored_verdicts():
         verdicts[os.path.basename(path)] = lap.review_verdict(content)
     return verdicts
 
-
-def workspace_slices(revisions):
-    """Run one shell command per revision in a throwaway jj workspace."""
-    tmp = tempfile.mkdtemp(prefix="echelon-ws-")
-    wt = os.path.join(tmp, os.path.basename(tmp))
-    # -r @: the new working-copy commit's parent is the revision under test
-    # (a plain `workspace add` branches off @-, i.e. the pre-change tree).
-    add = run(["jj", "workspace", "add", "-r", "@", wt])
-    if add.returncode != 0:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise RuntimeError("jj workspace add failed: %s" % (add.stderr or add.stdout).strip())
-    try:
-        results = [run(argv, cwd=wt, timeout=1800).returncode for argv in revisions]
-    finally:
-        run(["jj", "workspace", "forget", os.path.basename(tmp)])
-        shutil.rmtree(tmp, ignore_errors=True)
-    return results
-
-
 def suite_slices():
     """Slices 2+3: oracles at the tip, the known-red F5 control at the pre-fix
     tree, and the unit suite with its test count."""
@@ -210,11 +191,13 @@ def main(argv=None):
     date = datetime.date.today().isoformat()
 
     locked = None
+    locked_this_run = False
     if os.path.exists(BANK):
         with open(BANK, encoding="utf-8") as fh:
             locked = json.load(fh)
     else:
         lock_bank(commit)
+        locked_this_run = True
         with open(BANK, encoding="utf-8") as fh:
             locked = json.load(fh)
 
@@ -250,7 +233,7 @@ def main(argv=None):
         print("ECHELON suite_floor=ok")
     print("ECHELON suite_ok=%s" % str(suite_ok).lower())
     print("ECHELON cost_contract=%s" % str(cost_ok).lower())
-    print("ECHELON bank_locked=%s" % str(False).lower())
+    print("ECHELON locked_this_run=%s" % str(locked_this_run).lower())
     for key, was, is_now in drift:
         print("ECHELON DRIFT verdict[%s]: locked=%s now=%s" % (key, was, is_now))
     if not green:

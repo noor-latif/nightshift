@@ -1,6 +1,8 @@
 /state/
 /claims/
 __pycache__/
+.serena/
+/.pytest_cache/
 *.pid
 env.sh
 .env

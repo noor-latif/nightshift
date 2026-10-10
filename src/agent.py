@@ -37,10 +37,6 @@ class TransientError(Exception):
     """Worth one retry."""
 
 
-def chat_url(base_url=SURPLUS_BASE_URL):
-    return base_url.rstrip("/") + SURPLUS_CHAT_PATH
-
-
 def parse_stream(raw):
     """Parse recorded/streamed SSE bytes once at the end.
 
@@ -153,7 +149,7 @@ def write_trace(trace_dir, call_id, phase, *, payload_obj=None, raw=None,
     os.makedirs(trace_dir, exist_ok=True)
     row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "call_id": call_id, "phase": phase,
-           "url": url or chat_url()}
+           "url": url or (SURPLUS_BASE_URL.rstrip("/") + SURPLUS_CHAT_PATH)}
     if payload_obj is not None:
         # the actual outbound JSON, sanitized; model/params verbatim
         row["request"] = payload_obj
@@ -253,19 +249,8 @@ def reviewer_prompt(diff, criteria, files="", brief="", _cache={}):
 
 def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
          api_key=None, opener=None, trace_dir=None, call_id="call",
-         base_url=SURPLUS_BASE_URL, api="openai-completions",
-         max_tokens_field="max_tokens"):
+         base_url=SURPLUS_BASE_URL, api="openai-completions"):
     """Text call with existing retry policy; explicit compatible API route.
-
-    max_tokens_field names the completions field carrying the output cap.
-    The historical literal is "max_tokens"; a role whose gateway expects the
-    alias is driven by trusted per-role config (the Surplus catalog declares
-    max_tokens for the reviewed models — see
-    factory-docs/GLM-IMPLEMENTER-TOKEN-CHECK_2026-10-03.md §2; it has no
-    maxTokensField key). The gateway documents both names as aliases, so this
-    is configurability: the observed empty completion was never established to
-    be caused by the field name (see lap-9001 evidence; the causal claim is
-    retracted).
 
     trace_dir set → every actual attempt (request payload, response body,
     allowlisted headers, HTTP errors, transport errors, mid-stream cuts as a
@@ -281,9 +266,6 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
         # request: observed twice as a 120s transport timeout because the
         # gateway had no model to route. Fail before any HTTP call.
         raise ValueError("model must be a non-empty model id (got %r)" % (model,))
-    if not isinstance(max_tokens_field, str) or not max_tokens_field.strip():
-        raise ValueError("max_tokens_field must be a non-empty field name (got %r)"
-                         % (max_tokens_field,))
     responses = api == "openai-responses"
     url = base_url.rstrip("/") + ("/v1/responses" if responses else SURPLUS_CHAT_PATH)
     api_key = api_key or os.environ[SURPLUS_API_KEY_ENV]
@@ -307,7 +289,7 @@ def chat(messages, model, max_tokens=MIN_MAX_TOKENS, *, reasoning_effort=None,
                            **({"reasoning": {"effort": reasoning_effort}} if reasoning_effort else {})}
         else:
             payload_obj = {
-                "model": model, "messages": messages, max_tokens_field: attempt_max,
+                "model": model, "messages": messages, "max_tokens": attempt_max,
                 "stream": True,
                 **({"provider": PROVIDER_PINS[model]} if model in PROVIDER_PINS else {}),
                 **({"reasoning_effort": reasoning_effort} if reasoning_effort else {}),

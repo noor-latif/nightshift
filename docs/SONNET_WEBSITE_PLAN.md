@@ -26,8 +26,8 @@ Existing canonical receipts: **201 tests exit0** and a **fresh synthetic
 localhost lap** ending `awaiting-review`, bound to the integrated source.
 Neither was rerun for this docs change. Synthetic success is not a real
 model/service or visual-quality result. Source aggregate
-`sha256sum src/*.py | sha256sum` is
-`542d3d10b09e1fc0ba026436a4732e4ad84d06dc6b5e2c679b2da41fdb493577`.
+`sha256sum src/*.py | sha256sum` was pinned 2026-10-03, tree moved since
+(historical): `542d3d10b09e1fc0ba026436a4732e4ad84d06dc6b5e2c679b2da41fdb493577`.
 Local receipts: `~/repos/factory-docs/kormotorn-trial/evidence/fresh-run-integration/`.
 
 ## What the Sonnet diagnosis establishes

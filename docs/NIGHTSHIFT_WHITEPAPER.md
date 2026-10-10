@@ -54,7 +54,7 @@ hard mechanical gates — cross-family review, oracle verification, identity-bou
 and deploy with a health readback — before anything reaches main. The output is a merged PR
 and deployed software, or a kill. There is no in-between "probably fine."
 
-It is eight stdlib Python modules, zero dependencies, running on a single VPS or a laptop. Open
+It is nine stdlib Python modules, zero dependencies, running on a single VPS or a laptop. Open
 source, Apache-2.0: github.com/noor-latif/nightshift. A five-day spike (2026-09-24 through 2026-09-28, calendar span) is complete and the
 product build is scoped — and its two named fixes, the mutation-JSON artifact contract
 (section 3) and the dispatch-time RED re-check (SPIKE_LEARNINGS.md L-013), shipped on
@@ -276,7 +276,7 @@ Three behaviors, all in our evidence log — published in full, redacted only fo
 - **We falsified our own judge-gate.** We selected a deliberately confabulation-prone
   implementer against our reviewer specifically to stress the verification machinery
   (SPIKE_LEARNINGS.md L-000) — our zero-false-green number is adversarial, not curated.
-- **Stdlib discipline.** Eight modules, zero dependencies, one VPS or a laptop. The trust layer
+- **Stdlib discipline.** Nine modules, zero dependencies, one VPS or a laptop. The trust layer
   must never itself rot; we built it boring on purpose, and the 110–417× cost margin under
   the $0.01 ceiling — every measured green, both eras (the spike era alone: 256–370×) — is
   a byproduct of that discipline, not a retrofitted target.

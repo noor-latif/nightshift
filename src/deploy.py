@@ -47,13 +47,10 @@ echo "NOT READY after {ready_timeout}s"
 exit 1
 """
 
-def read_health(host_url):
-    with urllib.request.urlopen(host_url.rstrip("/") + "/health", timeout=10) as r:
-        return json.loads(r.read())
-
 def identity_readback(host_url, repo_cwd, git="git"):
     """/health revision must equal the local main HEAD (deploy identity)."""
-    reported = read_health(host_url).get("revision")
+    with urllib.request.urlopen(host_url.rstrip("/") + "/health", timeout=10) as r:
+        reported = json.loads(r.read()).get("revision")
     head = subprocess.run(
         ["git", "rev-parse", "main"], cwd=repo_cwd,
         capture_output=True, text=True, check=True,

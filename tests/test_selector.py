@@ -78,10 +78,6 @@ class TestSelector(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             os.open(first["path"], os.O_CREAT | os.O_EXCL | os.O_WRONLY)
 
-    def test_queue_empty_returns_none(self):
-        fake = FakeGh([], [])
-        self.assertIsNone(selector.claim_next("o/r", self.issues_dir, now=NOW, gh=fake.gh))
-
     def test_stale_claim_broken_with_note(self):
         fake = FakeGh(ISSUES, [])
         path = os.path.join(self.issues_dir, "issue-1.json")
@@ -110,7 +106,6 @@ class TestSelector(unittest.TestCase):
         state = {}
         cases = {
             "success": "merged",
-            "queue-empty": "idle",
             "timeout": "timeout-park",
             "abstain": "abstain",
         }

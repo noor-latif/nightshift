@@ -177,7 +177,7 @@ it is not byte-for-byte the old behavior.
 - `merge_mode: "review"` — stop after local verification: retain a local
   `review/<run-id>` ref and `merge.json`, no push/PR/merge/deploy/close.
 - `REVIEWER_API`/`IMPLEMENTER_API` (`openai-completions|openai-responses`),
-  `REVIEWER_REASONING_EFFORT`, `IMPLEMENTER_MAX_TOKENS_FIELD`,
+  `REVIEWER_REASONING_EFFORT`,
   `FACTORY_HTTP_TIMEOUT_S`, `COST_CEILING_USD` — per-role transport and caps;
   defaults unchanged.
 

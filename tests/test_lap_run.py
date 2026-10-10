@@ -68,8 +68,7 @@ class FakeLapEnv:
         ]
 
     def fake_chat(self, msgs, model, max_tokens=None, reasoning_effort=None,
-                  trace_dir=None, call_id="call", api="openai-completions",
-                  max_tokens_field="max_tokens"):
+                  trace_dir=None, call_id="call", api="openai-completions"):
         if model == lap.IMPLEMENTER_MODEL:
             content = json.dumps([{"file": "app.py", "find": "x = 1", "replace": "x = 2"}])
         else:
@@ -332,8 +331,7 @@ class TestPromptViewSanity(unittest.TestCase):
         rendered = "=== app.py ===\nx = 1\n" + ("x" * 80000)
 
         def cheap_chat(messages, model, max_tokens=None, reasoning_effort=None,
-                       trace_dir=None, call_id="call", api="openai-completions",
-                       max_tokens_field="max_tokens"):
+                       trace_dir=None, call_id="call", api="openai-completions"):
             if model == lap.IMPLEMENTER_MODEL:
                 content = json.dumps([{"file": "app.py", "find": "x = 1", "replace": "x = 2"}])
             else:

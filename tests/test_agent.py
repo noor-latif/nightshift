@@ -429,16 +429,9 @@ class TestChatConfigBoundary(unittest.TestCase):
                 chat([{"role": "user", "content": "x"}], model, api_key="k", opener=op)
         self.assertEqual(op.calls, [], "no request may be built for a blank model")
 
-    def test_output_cap_field_is_configurable(self):
-        # the wrong completions field is accepted with HTTP 200 and then
-        # returns an empty completion (observed), so the wire field is
-        # explicit per role and asserted on the actual request bytes.
-        op = FakeOpener([FakeResp(load("sse_stream.txt"))])
-        chat([{"role": "user", "content": "x"}], "m", max_tokens=4096,
-             api_key="k", opener=op, max_tokens_field="max_completion_tokens")
-        sent = json.loads(op.calls[0].data)
-        self.assertEqual(sent["max_completion_tokens"], 4096)
-        self.assertNotIn("max_tokens", sent)
+    def test_output_cap_wire_field(self):
+        # the wire literal is "max_tokens" (the gateway alias knob was cut as
+        # YAGNI: no catalog entry needs the alias); asserted on actual bytes.
         op = FakeOpener([FakeResp(load("sse_stream.txt"))])
         chat([{"role": "user", "content": "x"}], "m", max_tokens=4096,
              api_key="k", opener=op)

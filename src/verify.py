@@ -157,12 +157,11 @@ def run_unit_tests(cwd):
     return r.returncode == 0 and ran > 0, out
 
 
-def free_port(prefer=None):
+def free_port():
     lo, hi = SCENARIO_PORT_RANGE
     import socket
 
-    candidates = [prefer] if prefer else range(lo, hi)
-    for p in candidates:
+    for p in range(lo, hi):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             # SO_REUSEADDR: a just-closed candidate's TIME_WAIT sockets must
             # not make the probe (or the next boot on that port) fail —
@@ -176,13 +175,11 @@ def free_port(prefer=None):
     raise Hold("no free port in scenario range")
 
 
-def boot_candidate(cwd, port, pid_file, env_extra=None):
+def boot_candidate(cwd, port, pid_file):
     """Boot `python3 app.py` with cwd = candidate checkout, PID-file ownership."""
     env = candidate_env()
     env.pop(PROVENANCE_ENV, None)
     env["FACTORY_PORT"] = str(port)
-    if env_extra:
-        env.update(env_extra)
     out = open(pid_file + ".log", "w")
     proc = subprocess.Popen(
         ["python3", "app.py"], cwd=cwd, env=env,
@@ -369,7 +366,7 @@ def evaluate_exec_assertion(assertion, cwd):
 
 
 
-def run_scenario(scenario, checkout_cwd, pid_file, port=None):
+def run_scenario(scenario, checkout_cwd, pid_file):
     """Boot candidate, run all assertions, tear down. Evidence = per-assertion.
 
     scenario["boot_cwd"] == "no-git" boots a plain copy of the checkout
@@ -395,7 +392,7 @@ def run_scenario(scenario, checkout_cwd, pid_file, port=None):
             else ("HOLD" if any(c["status"] == "HOLD" for c in results["checks"]) else "fail")
         )
         return results
-    port = free_port(port)
+    port = free_port()
     revision = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=checkout_cwd,
         capture_output=True, text=True, check=True,
@@ -495,7 +492,6 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None, evidence
     # a skip is not a pass (it is absent from all_checks entirely).
     if DEPLOY_MODE == "none":
         evidence["provenance"] = {"status": "skip", "detail": "DEPLOY_MODE=none"}
-        all_checks = [evidence["unit"]] + [c for s in evidence["scenarios"] for c in s["checks"]]
     else:
         try:
             port = free_port()
@@ -508,7 +504,9 @@ def verify_candidate(checkout_cwd, pid_file, scenarios_dir, issue=None, evidence
             evidence["provenance"] = {"status": "HOLD", "detail": str(e)}
         finally:
             stop_candidate(pid_file)
-        all_checks = [evidence["unit"]] + [c for s in evidence["scenarios"] for c in s["checks"]] + [evidence["provenance"]]
+    all_checks = [evidence["unit"]] + [c for s in evidence["scenarios"] for c in s["checks"]]
+    if DEPLOY_MODE != "none":
+        all_checks.append(evidence["provenance"])
     statuses = {c["status"] for c in all_checks}
     evidence["verdict"] = "HOLD" if "HOLD" in statuses else ("pass" if statuses <= {"pass"} else "fail")
     return evidence
