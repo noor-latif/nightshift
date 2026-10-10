@@ -180,11 +180,11 @@ def boot_candidate(cwd, port, pid_file):
     env = candidate_env()
     env.pop(PROVENANCE_ENV, None)
     env["FACTORY_PORT"] = str(port)
-    out = open(pid_file + ".log", "w")
-    proc = subprocess.Popen(
-        ["python3", "app.py"], cwd=cwd, env=env,
-        stdout=out, stderr=subprocess.STDOUT,
-    )
+    with open(pid_file + ".log", "w") as out:
+        proc = subprocess.Popen(
+            ["python3", "app.py"], cwd=cwd, env=env,
+            stdout=out, stderr=subprocess.STDOUT,
+        )
     with open(pid_file, "w") as f:
         f.write(str(proc.pid))
     return proc

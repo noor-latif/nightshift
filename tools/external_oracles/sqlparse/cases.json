@@ -1,0 +1,56 @@
+{
+  "_note": "Lap 4001 oracle fixture (sqlparse #842). kind=paging_clause cases are property-based: the clause must stay on one line, nothing may be dropped, and the lines before the clause may not move. kind=exact_lines cases are controls whose base output IS the expected output (P2P regression guards). Every expected output below was measured on the pinned base 60cdc649; the paging cases were additionally measured GREEN at base+gold (PR #855 source hunk) and at a 1-line alternative fix.",
+  "cases": [
+    {
+      "name": "c1_offset_fetch_issue_repro",
+      "kind": "paging_clause",
+      "sql": "SELECT id FROM tbl WHERE id > 0 ORDER BY id ASC OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY",
+      "options": {"keyword_case": "upper", "reindent_aligned": true},
+      "clause": "OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY",
+      "prefix_lines": ["SELECT id", "  FROM tbl", " WHERE id > 0"],
+      "order_line_prefix": "ORDER BY id ASC",
+      "orphan_forbidden": ["ONLY"]
+    },
+    {
+      "name": "c2_offset_fetch_varied_numbers",
+      "kind": "paging_clause",
+      "sql": "select id from tbl where id > 0 order by id asc offset 20 rows fetch next 5 rows only",
+      "options": {"keyword_case": "upper", "reindent_aligned": true},
+      "clause": "OFFSET 20 ROWS FETCH NEXT 5 ROWS ONLY",
+      "prefix_lines": ["SELECT id", "  FROM tbl", " WHERE id > 0"],
+      "order_line_prefix": "ORDER BY id ASC",
+      "orphan_forbidden": ["ONLY"]
+    },
+    {
+      "name": "c3_limit_control",
+      "kind": "exact_lines",
+      "sql": "SELECT id FROM tbl WHERE id > 0 ORDER BY id ASC LIMIT 100",
+      "options": {"keyword_case": "upper", "reindent_aligned": true},
+      "expect_lines": ["SELECT id", "  FROM tbl", " WHERE id > 0", " ORDER BY id ASC", " LIMIT 100"]
+    },
+    {
+      "name": "c4_join_on_and_control",
+      "kind": "exact_lines",
+      "sql": "SELECT a.id FROM a JOIN b ON a.id = b.id WHERE a.x = 1 AND b.y = 2",
+      "options": {"keyword_case": "upper", "reindent_aligned": true},
+      "expect_lines": ["SELECT a.id", "  FROM a", "  JOIN b", "    ON a.id = b.id", " WHERE a.x = 1", "   AND b.y = 2"]
+    },
+    {
+      "name": "c5_reindent_non_aligned_control",
+      "kind": "exact_lines",
+      "sql": "SELECT id FROM tbl WHERE id > 0 ORDER BY id ASC OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY",
+      "options": {"keyword_case": "upper", "reindent": true},
+      "expect_lines": ["SELECT id", "FROM tbl", "WHERE id > 0", "ORDER BY id ASC", "OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"]
+    },
+    {
+      "name": "c6_offset_fetch_after_identifier_list",
+      "kind": "paging_clause",
+      "sql": "select a, b from t where x = 1 order by a desc offset 5 rows fetch next 10 rows only",
+      "options": {"keyword_case": "upper", "reindent_aligned": true},
+      "clause": "OFFSET 5 ROWS FETCH NEXT 10 ROWS ONLY",
+      "prefix_lines": ["SELECT a,", "       b", "  FROM t", " WHERE x = 1"],
+      "order_line_prefix": "ORDER BY a DESC",
+      "orphan_forbidden": ["ONLY"]
+    }
+  ]
+}
