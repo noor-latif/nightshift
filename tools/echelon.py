@@ -7,10 +7,12 @@ kernel" — a locked case set, per-slice gating, no paid calls. Five slices:
   1. stored verdicts — review_verdict() (src/lap.py) over the FROZEN snapshot
      in tools/echelon_bank/ (one .txt per locked review, named by sanitized
      relative path); expected verdicts locked in tools/echelon_bank.json
-  2. self-bank oracles — the F5/G9 oracles, run against the tip under test,
-     PLUS a known-red control: the F5 oracle against the PRE-FIX tree
-     (cfd7ad4b, the parent of the b566cd06 fix) must exit non-zero — pins
-     discrimination, not just the fix
+  2. self-bank oracles — the F5/G9/F6 oracles, run against the tip under
+     test, PLUS known-red controls: the F5 oracle against the PRE-FIX tree
+     (cfd7ad4b, the parent of the b566cd06 fix) and the F6 oracle against
+     its defect-live tree (a478fa35, the parent of the d57fb5af fix) must
+     each exit non-zero — pins discrimination, not just the fix
+     (`known_red=ok` means ALL red-side controls fired)
   3. unit suite — unittest discover, in that same checkout; the count is
      floored at the locked suite_tests (a suite that loses tests never greens)
   4. cost honesty — the newest cost.json carries the completeness contract
@@ -74,10 +76,13 @@ ROOT = os.path.dirname(HERE)
 BANK = os.path.join(HERE, "echelon_bank.json")
 SNAP = os.path.join(HERE, "echelon_bank")
 ORACLE_DIR = os.path.expanduser("~/repos/self-bank/oracles")
-ORACLES = ("oracle_self_f5.sh", "oracle_self_g9.sh")
+ORACLES = ("oracle_self_f5.sh", "oracle_self_g9.sh", "oracle_self_f6.sh")
 # The pre-fix tree for the known-red control: parent of the b566cd06 fix
 # (change unytzmplwkny). Hardcoded; the change-id suffix form is fragile.
 PRE_FIX = "cfd7ad4bb4b62959a5a46c561bbee7c518c583a0"
+# Known-red tree for the F6 oracle: the tip BEFORE the F6 fix (d57fb5af)
+# landed — the defect is live there (bare `skip`, no reason markers).
+F6_PRE_FIX = "a478fa35f555ab4653dc24ce64d4690a2f4129e0"
 SQLPARSE_ORACLE = os.path.join(HERE, "external_oracles", "sqlparse")
 EXTERNAL_TIMEOUT = 180  # per foreign leg; tripped = broken, never silent
 # Written into every fresh lock so re-locks stay self-contained (same spirit
@@ -173,8 +178,8 @@ def stored_verdicts():
     return verdicts
 
 def suite_slices():
-    """Slices 2+3: oracles at the tip, the known-red F5 control at the pre-fix
-    tree, and the unit suite with its test count."""
+    """Slices 2+3: oracles at the tip, the known-red controls at their
+    pre-fix trees, and the unit suite with its test count."""
     tmp = tempfile.mkdtemp(prefix="echelon-ws-")
     wt = os.path.join(tmp, os.path.basename(tmp))
     add = run(["jj", "workspace", "add", "-r", "@", wt])
@@ -186,18 +191,24 @@ def suite_slices():
                               timeout=900).returncode) for name in ORACLES]
         suite = run([sys.executable, "-m", "unittest", "discover", "-s", "tests"],
                     cwd=wt, timeout=1800)
-        pre = tempfile.mkdtemp(prefix="echelon-prered-")
-        pref = os.path.join(pre, os.path.basename(pre))
-        add2 = run(["jj", "workspace", "add", "-r", PRE_FIX, pref])
-        if add2.returncode != 0:
-            raise RuntimeError("known-red workspace failed: %s"
-                               % (add2.stderr or add2.stdout).strip())
-        try:
-            known_red = run(["bash", os.path.join(ORACLE_DIR, "oracle_self_f5.sh")],
-                            cwd=pref, timeout=900).returncode
-        finally:
-            run(["jj", "workspace", "forget", os.path.basename(pre)])
-            shutil.rmtree(pre, ignore_errors=True)
+        # Known-red controls: each oracle re-run against its defect-live tree
+        # must exit non-zero (discrimination, not just the fix).
+        red_specs = (("f5", PRE_FIX, "oracle_self_f5.sh"),
+                     ("f6", F6_PRE_FIX, "oracle_self_f6.sh"))
+        known_red = {}
+        for name, rev, oracle in red_specs:
+            pre = tempfile.mkdtemp(prefix="echelon-prered-")
+            pref = os.path.join(pre, os.path.basename(pre))
+            add2 = run(["jj", "workspace", "add", "-r", rev, pref])
+            if add2.returncode != 0:
+                raise RuntimeError("known-red workspace (%s) failed: %s"
+                                   % (name, (add2.stderr or add2.stdout).strip()))
+            try:
+                known_red[name] = run(["bash", os.path.join(ORACLE_DIR, oracle)],
+                                      cwd=pref, timeout=900).returncode
+            finally:
+                run(["jj", "workspace", "forget", os.path.basename(pre)])
+                shutil.rmtree(pre, ignore_errors=True)
     finally:
         run(["jj", "workspace", "forget", os.path.basename(tmp)])
         shutil.rmtree(tmp, ignore_errors=True)
@@ -377,7 +388,7 @@ def main(argv=None):
 
     oracles, known_red, suite_tests, suite_ok, suite_tail = suite_slices()
     oracles_green = sum(1 for _, code in oracles if code == 0)
-    known_red_ok = known_red != 0
+    known_red_ok = all(code != 0 for code in known_red.values())
 
     locked = None
     locked_this_run = False
@@ -426,7 +437,8 @@ def main(argv=None):
                   and flox_state != "broken"))
 
     print("ECHELON verdict_stability=%s" % stability)
-    print("ECHELON known_red=%s" % ("ok" if known_red_ok else "broken"))
+    broken_red = sorted(n for n, c in known_red.items() if c == 0)
+    print("ECHELON known_red=%s" % ("ok" if known_red_ok else "broken(%s)" % ",".join(broken_red)))
     print("ECHELON oracles_green=%d/%d" % (oracles_green, len(ORACLES)))
     print("ECHELON suite_tests=%d" % suite_tests)
     if not floor_ok:
@@ -450,7 +462,8 @@ def main(argv=None):
             if code:
                 print("ECHELON FAIL oracle %s exit=%d" % (name, code))
         if not known_red_ok:
-            print("ECHELON FAIL known-red control: F5 oracle exited 0 on pre-fix tree")
+            print("ECHELON FAIL known-red control(s) exited 0 on pre-fix tree: %s"
+                  % ",".join(broken_red))
         if not floor_ok:
             print("ECHELON FAIL suite floor")
         if not suite_ok:
