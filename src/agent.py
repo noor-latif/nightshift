@@ -227,12 +227,15 @@ def implementer_prompt(issue, criteria, n, _cache={}):
     )
 
 
-def reviewer_prompt(diff, criteria, files="", brief="", _cache={}):
+def reviewer_prompt(diff, criteria, files="", brief="", verify_receipt="",
+                    _cache={}):
     """Fresh context: diff + criteria + post-apply file view (candidate state).
     Never the implementation reasoning. The file view exists so criteria about
     code the diff does not touch are checkable instead of fail-closed. The
     design brief is the same direction the implementer was given, so a
-    design-compliance criterion is checkable instead of unverifiable."""
+    design-compliance criterion is checkable instead of unverifiable.
+    verify_receipt is the mechanical verify result (F7): executed evidence the
+    reviewer must not re-litigate."""
     if "reviewer" not in _cache:
         with open(os.path.join(os.path.dirname(__file__), "prompts", "reviewer.txt")) as f:
             _cache["reviewer"] = f.read()
@@ -242,7 +245,7 @@ def reviewer_prompt(diff, criteria, files="", brief="", _cache={}):
                             "design brief the implementation was given:\n{{brief}}\n\n"
                             "acceptance criteria:\n{{criteria}}")
     for k, v in {"{{diff}}": diff, "{{criteria}}": criteria, "{{files}}": files,
-                 "{{brief}}": brief}.items():
+                 "{{brief}}": brief, "{{verify_receipt}}": verify_receipt}.items():
         body = body.replace(k, v)
     return body
 

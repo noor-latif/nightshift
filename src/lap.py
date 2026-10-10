@@ -768,6 +768,29 @@ def review_table(content, verdict_class):
             "evidence_none_count": sum(1 for c in criteria
                                        if c["evidence"].lower() == "none")}
 
+def verify_receipt(evidence):
+    """Human-readable mechanical-verify receipt for the reviewer prompt.
+
+    Quotes only what verify.json actually contains (verdict, suite
+    status/count, per-scenario verdicts); nothing is inferred or fabricated.
+    F7: the reviewer receives the executed evidence so it does not re-litigate
+    criteria the oracle and suite already adjudicated."""
+    lines = ["mechanical verify (ran BEFORE this review; these results are "
+             "already adjudicated):", "verdict: %s" % evidence.get("verdict")]
+    unit = evidence.get("unit") or {}
+    if unit:
+        count = next((r.get("test_count") for r in unit.get("commands", [])
+                      if r.get("test_count") is not None), None)
+        lines.append("test suite: status %s%s" % (
+            unit.get("status"), " (N = %s)" % count if count is not None else ""))
+    for s in evidence.get("scenarios", []):
+        lines.append("scenario %r: %s" % (s.get("scenario"),
+                                          s.get("verdict") or s.get("status")))
+    prov = evidence.get("provenance") or {}
+    if prov:
+        lines.append("provenance: %s" % prov.get("status"))
+    return "\n".join(lines)
+
 
 def run(issue):
     lap = Lap(issue)
@@ -859,11 +882,28 @@ def run(issue):
         with open(os.path.join(lap.evdir, "applied.diff"), "w") as f:
             f.write(branch_diff)
 
+        # F7: mechanical verification runs BEFORE the reviewer. A doomed
+        # candidate ends at gate=verify with no reviewer call (no spend), and
+        # the reviewer judges a candidate whose oracle/suite results already
+        # exist — with the receipts in its prompt — instead of gating ahead
+        # of executed evidence (lap-observed false rejections of oracle-green
+        # candidates ran the old review-first order).
+        pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
+        evidence = verify.verify_candidate(
+            worktree, pid_file, SCENARIOS_DIR, issue=issue,
+            evidence_dir=os.path.join(lap.evdir, "verify-commands"))
+        lap._dump("verify.json", evidence)
+        if evidence["verdict"] != "pass":
+            return finish(lap, "failure", gate="verify", error=evidence)
+        lap.event("verify-green")
+        lap.check_clock()
+
         rev = chat_or_cost_unknown(
             "reviewer", [{"role": "user", "content":
                           agent.reviewer_prompt(branch_diff, criteria,
                                                 files="\n".join(checkout_files(worktree)),
-                                                brief=design_brief_from(data["body"]))}],
+                                                brief=design_brief_from(data["body"]),
+                                                verify_receipt=verify_receipt(evidence))}],
             REVIEWER_MODEL, max_tokens=REVIEWER_MAX_TOKENS,
             api=REVIEWER_API, reasoning_effort=REVIEWER_REASONING_EFFORT,
             trace_dir=os.path.join(lap.evdir, "traces"),
@@ -919,15 +959,6 @@ def run(issue):
                                   else "reviewer gave no parseable verdict"),
                           extra={"rejected_candidate": rejected})
         lap.event("review-accept", verdict="accept")
-        lap.check_clock()
-        pid_file = os.path.join("/tmp", "factory-verify-%s.pid" % lap.run_id)
-        evidence = verify.verify_candidate(
-            worktree, pid_file, SCENARIOS_DIR, issue=issue,
-            evidence_dir=os.path.join(lap.evdir, "verify-commands"))
-        lap._dump("verify.json", evidence)
-        if evidence["verdict"] != "pass":
-            return finish(lap, "failure", gate="verify", error=evidence)
-        lap.event("verify-green")
         lap.check_clock()
         # Only literal entries are promises ("create exactly these"); a glob
         # entry is a create surface, so it is not required to have produced

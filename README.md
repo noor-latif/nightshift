@@ -41,6 +41,23 @@ The working reports behind this spike (field tests, lap runs, defect
 post-mortems) live in `~/repos/factory-docs/`; `docs/evidence/` here is the
 frozen, redacted ledger that ships with the repo.
 
+### Gate order inside a lap
+
+Within a lap the two quality gates run in a fixed order: **mechanical
+verification first, LLM review second** (implement → mutation-apply → commit
+→ verify → review → merge). A candidate that fails the native verify ends
+there — no reviewer call is spent on a candidate the oracle already rejected.
+A candidate that passes verify is then reviewed with the mechanical result
+inlined into the reviewer prompt as a receipt (suite status/count, oracle
+verdicts); the reviewer's remit is what the oracle does not cover, and
+overriding an executed result requires quoting deciding text and arguing why
+the mechanical result does not decide the criterion. Nothing merges unless
+both gates pass. The order is deliberate: a verified-clean candidate was once
+false-rejected by the reviewer ahead of the oracle's own control verdict, and
+the review literature shows evidence-quote rubrics amplify such false
+rejections — execution evidence belongs in the loop before judgment, not
+after it.
+
 ## Layout
 
 - `src/` — nine modules: `settings.py` (literal config values only),

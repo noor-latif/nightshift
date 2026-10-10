@@ -276,6 +276,8 @@ Three behaviors, all in our evidence log — published in full, redacted only fo
 - **We falsified our own judge-gate.** We selected a deliberately confabulation-prone
   implementer against our reviewer specifically to stress the verification machinery
   (SPIKE_LEARNINGS.md L-000) — our zero-false-green number is adversarial, not curated.
+  The judge-gate is also ordered below the mechanical gate: a lap verifies natively
+  first and only then reviews, with the verify receipts in the reviewer prompt.
 - **Stdlib discipline.** Nine modules, zero dependencies, one VPS or a laptop. The trust layer
   must never itself rot; we built it boring on purpose, and the 110–417× cost margin under
   the $0.01 ceiling — every measured green, both eras (the spike era alone: 256–370×) — is

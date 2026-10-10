@@ -612,10 +612,11 @@ class TestLocalReviewSnapshot(unittest.TestCase):
             self.assertEqual(json.load(f)["commit"], rejected["commit"])
 
     def test_abstained_candidate_is_terminal_escalation_not_reject_or_retry(self):
-        # P3: abstain is its own terminal class — no merge, no verify, no
-        # close; the candidate is retained under the reject retention
-        # namespace, and the verdict class is recorded as abstain (never
-        # accept, and never collapsed into "fail").
+        # P3: abstain is its own terminal class — no merge, no close; the
+        # candidate is retained under the reject retention namespace, and the
+        # verdict class is recorded as abstain (never accept, and never
+        # collapsed into "fail"). F7: abstain happens AFTER verify-green —
+        # the reviewer sees only mechanically-verified candidates.
         def abstaining_chat(messages, model, **kw):
             if model == lap.IMPLEMENTER_MODEL:
                 content = json.dumps([{"file": "app.py", "find": "x = 1",
@@ -630,7 +631,6 @@ class TestLocalReviewSnapshot(unittest.TestCase):
              unittest.mock.patch.object(lap, "MERGE_MODE", "review"), \
              unittest.mock.patch.object(lap.agent, "chat", side_effect=abstaining_chat), \
              unittest.mock.patch.object(lap.merge, "full_merge", side_effect=AssertionError("must not merge")), \
-             unittest.mock.patch.object(lap.verify, "verify_candidate", side_effect=AssertionError("must not verify")), \
              unittest.mock.patch.object(lap, "_gh", side_effect=AssertionError("must not close")):
             lap.run(env.ISSUE)
         with open(os.path.join(env.base, "lap-result.json")) as f:
@@ -700,6 +700,107 @@ class TestWorktreePreAssignCleanup(unittest.TestCase):
             # the pre-assigned path was reaped despite worktree_for raising
             self.assertNotIn(env.worktree,
                              git(env.repo, "worktree", "list", "--porcelain"))
+
+class TestGateOrderVerifyBeforeReview(unittest.TestCase):
+    """F7: the mechanical verify gate runs BEFORE the reviewer call. A
+    verify-fail terminates at gate=verify with the reviewer never invoked (no
+    spend on a doomed candidate); a verify-pass candidate is reviewed with the
+    mechanical receipt in its prompt; both gates still gate (zero-false-green
+    unchanged)."""
+
+    def implementer_then_verdict_chat(self, reviewer_content):
+        def chat(messages, model, **kw):
+            self.calls.append(("reviewer-prompt", messages[0]["content"])
+                              if model == lap.REVIEWER_MODEL
+                              else ("implementer", None))
+            if model == lap.IMPLEMENTER_MODEL:
+                content = json.dumps([{"file": "app.py", "find": "x = 1",
+                                       "replace": "x = 2"}])
+            else:
+                content = reviewer_content
+            return {"content": content, "finish_reason": "stop",
+                    "usage": {"buyer_cost_micro": 1000}}
+        return chat
+
+    def setUp(self):
+        self.calls = []
+
+    def verify(self, verdict):
+        return unittest.mock.patch.object(
+            lap.verify, "verify_candidate",
+            lambda cwd, pid, sdir, issue=None, evidence_dir=None:
+                {"verdict": verdict, "unit": {"status": "pass", "commands": [
+                    {"test_count": 329, "status": "pass"}]},
+                 "scenarios": [{"scenario": "paste-201", "verdict": "pass"}]})
+
+    def test_verify_fail_ends_gate_verify_without_reviewer_prompt_assembly(self):
+        # strongest form: the reviewer mock records the PROMPT it was handed;
+        # on verify-fail that call never happens, so no prompt was assembled
+        with FakeLapEnv("none") as env, \
+             self.verify("fail"), \
+             unittest.mock.patch.object(lap.agent, "chat",
+                                        side_effect=self.implementer_then_verdict_chat(
+                                            "VERDICT: accept")), \
+             unittest.mock.patch.object(lap.merge, "full_merge",
+                                        side_effect=AssertionError("must not merge")):
+                lap.run(env.ISSUE)
+        result = json.load(open(os.path.join(env.base, "lap-result.json")))
+        self.assertEqual(result["gate"], "verify")
+        self.assertEqual(result["outcome"], "failure")
+        self.assertEqual([c for c, _ in self.calls], ["implementer"])
+        # verify.json is still written where it always was
+        evidence = json.load(open(os.path.join(result["evidence_dir"],
+                                               "verify.json")))
+        self.assertEqual(evidence["verdict"], "fail")
+        events = [e["event"] for e in env.timeline()]
+        self.assertNotIn("review-accept", events)
+        self.assertNotIn("review-reject", events)
+
+    def test_verify_pass_reviewer_reject_still_gates_at_review(self):
+        with FakeLapEnv("none") as env, \
+             self.verify("pass"), \
+             unittest.mock.patch.object(lap.agent, "chat",
+                                        side_effect=self.implementer_then_verdict_chat(
+                                            "VERDICT: reject")), \
+             unittest.mock.patch.object(lap, "MERGE_MODE", "review"), \
+             unittest.mock.patch.object(lap.merge, "full_merge",
+                                        side_effect=AssertionError("must not merge")):
+                lap.run(env.ISSUE)
+        result = json.load(open(os.path.join(env.base, "lap-result.json")))
+        self.assertEqual(result["gate"], "review")
+        self.assertEqual(result["outcome"], "failure")
+        self.assertEqual(result["rejected_candidate"]["verdict"], "reject")
+        # order: verify-green row lands BEFORE the review-reject row
+        events = [e["event"] for e in env.timeline()]
+        self.assertLess(events.index("verify-green"),
+                        events.index("review-reject"))
+
+    def test_reviewer_material_carries_verify_receipt(self):
+        with FakeLapEnv("none") as env, \
+             self.verify("pass"), \
+             unittest.mock.patch.object(lap.agent, "chat",
+                                        side_effect=self.implementer_then_verdict_chat(
+                                            "VERDICT: accept")):
+                lap.run(env.ISSUE)
+        prompts = [c for c in self.calls if c[0] == "reviewer-prompt"]
+        self.assertEqual(len(prompts), 1)
+        prompt = prompts[0][1]
+        # the receipt quotes verify.json content: verdict, suite status + N,
+        # scenario verdict — nothing fabricated
+        self.assertIn("verdict: pass", prompt)
+        self.assertIn("test suite: status pass (N = 329)", prompt)
+        self.assertIn("scenario 'paste-201': pass", prompt)
+        self.assertIn("already adjudicated", prompt)
+        # the verify receipt lands in the prompt the reviewer actually
+        # receives, i.e. BEFORE the reviewer call, i.e. verify ran first
+        self.assertEqual([c for c, _ in self.calls],
+                         ["implementer", "reviewer-prompt"])
+
+    def test_verify_receipt_quotes_only_existing_fields(self):
+        receipt = lap.verify_receipt({"verdict": "pass", "unit": {}, "scenarios": []})
+        self.assertEqual(receipt.count("\n"), 1)
+        self.assertNotIn("suite", receipt)
+        self.assertIn("verdict: pass", receipt)
 
 if __name__ == "__main__":
     unittest.main()
