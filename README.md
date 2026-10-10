@@ -99,15 +99,23 @@ every clone in the chain is deep enough to resolve the base. The four task-level
 keys (`FACTORY_TASK_FILE`, `CODE_PATHS`, `FACTORY_NEW_FILES`, `SCENARIOS_DIR`)
 are emitted commented out: they are the operator's to author, never the model's.
 
-Honest limits of the gate table, today: a `skip` caused by G3 failing carries the
-blocked-by marker `skip(G3)`, but a skip for an absent input (no `--netns`, no
-`--probe`) still does not say *why*. G9 never passes vacuously: a clone with no
-installed hooks reports `skip(no-hooks)` — the A/B would pass both legs — and a
-clone with hooks but no escape env reports `skip`. The `network` field flows
-through from the qualifier proposal when the operator seed does not pin one;
-it stays seed > proposal > `--netns`-derived > `unknown`. Read `gate` as
-"measured green" only where it says `pass` **and** the corresponding receipt
-exists under the evidence dir.
+Honest limits of the gate table, today: every `skip` carries the reason it was
+not measured. The enum: `skip(G3)` (blocked by G3 failing), `skip(no-netns)`
+(`--netns` not requested), `skip(no-probe)` (`--probe` not requested or no
+probe configured), `skip(no-hooks)` (no installed hooks: the G9 A/B would be
+vacuous), `skip(no-hooks-ab)` (`--no-hooks-ab`), `skip(no-escape)` (poisoned
+hooks but no escape env declared), `skip(no-commands)` (no build/test commands
+were proposed or seeded), `skip(no-dry-run)` (`--no-dry-run`: static pass
+only), `skip(no-adapter)` (no adapter to probe), `skip(operator)` (the seed
+disables the adapter probe), `skip(bad-probe)` (the declared collection probe
+is malformed), `skip(no-measure)` (unreachable in practice; kept honest). A
+skip is recorded *instead of* a measurement, never as one — the marker says
+what was missing, not what passed. G9 never passes vacuously: a clone with no
+installed hooks reports `skip(no-hooks)` — the A/B would pass both legs. The
+`network` field flows through from the qualifier proposal when the operator
+seed does not pin one; it stays seed > proposal > `--netns`-derived >
+`unknown`. Read `gate` as "measured green" only where it says `pass` **and**
+the corresponding receipt exists under the evidence dir.
 
 ## Local lap — canonical entrypoint
 

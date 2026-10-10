@@ -507,7 +507,9 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
                           base_count=base_count, identical=same)
             gates["G4"] = "pass" if same else "fail"
         else:
-            gates["G4"] = "skip(G3)" if gates["G3"] != "pass" else "skip"
+            # G3 not green is the only way this branch is reachable, but keep
+            # the honest conditional rather than asserting the marker.
+            gates["G4"] = "skip(G3)" if gates["G3"] != "pass" else "skip(no-measure)"
 
         # ---- G5: hermeticity under a dead-egress netns ---------------------
         if suite_entry is not None and gates["G3"] == "pass" and netns:
@@ -518,14 +520,15 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
                           argv_wrapped=netns_argv(suite_entry["argv"]),
                           lo_required=True, gate=gates["G5"])
         else:
-            gates["G5"] = "skip(G3)" if gates["G3"] != "pass" else "skip"
+            gates["G5"] = ("skip(G3)" if gates["G3"] != "pass" else "skip(no-netns)")
+
 
         # ---- G6: build hygiene --------------------------------------------
         dirty = _git(["status", "--porcelain"], worktree)
         gates["G6"] = "pass" if not dirty else "fail"
 
         # ---- G3b: collection liveness (the free RED half) ------------------
-        gates["G3b"] = "skip(G3)" if (probe and not base_count) else "skip"
+        gates["G3b"] = "skip(G3)" if (probe and not base_count) else "skip(no-probe)"
         if probe and base_count:
             gates["G3b"] = _collection_probe(worktree, probe, suite_entry, runner,
                                              suite_timeout_s, evdir, run_env, base_count)
@@ -541,7 +544,7 @@ def dry_run(repo, base, prepare, verify, suite_index, runner, suite_timeout_s,
             gates["G9"] = "pass"          # hooks installed, none of the poisoned class
             hook_finding = None
         elif not hooks_ab:
-            gates["G9"], hook_finding = "skip", None
+            gates["G9"], hook_finding = "skip(no-hooks-ab)", None
         else:
             hooks = _hooks_ab(worktree, env, evdir)
             gates["G9"], hook_finding = hooks["gate"], hooks["finding"]
@@ -576,7 +579,7 @@ def _hooks_ab(worktree, env, evdir):
     ident = ["-c", "user.email=qualify@nightshift", "-c", "user.name=qualify"]
     escape = {k: v for k, v in env.items() if k == "PRE_COMMIT_ALLOW_NO_CONFIG"}
     if not escape:
-        return {"gate": "skip", "finding": None}
+        return {"gate": "skip(no-escape)", "finding": None}
 
     config = os.path.join(worktree, ".pre-commit-config.yaml")
     had_config = _read(config) if os.path.isfile(config) else None
@@ -673,13 +676,13 @@ def _collection_probe(worktree, probe, suite_entry, runner, timeout_s, evdir,
     """
     target_name = probe.get("target") or probe.get("file")
     if not isinstance(target_name, str) or not isinstance(probe.get("snippet"), str):
-        return "skip"
+        return "skip(bad-probe)"
     target = os.path.join(worktree, target_name)
     try:
         with open(target, "a") as f:
             f.write("\n" + probe["snippet"] + "\n")
     except OSError:
-        return "skip"
+        return "skip(bad-probe)"
     try:
         res = run_suite(suite_entry["argv"], worktree, runner, timeout_s, evdir,
                         "suite-probe", env=run_env)
@@ -797,6 +800,8 @@ def emit_env(recipe, path=None):
         "export GITHUB_REPO=%s" % repo["origin"],
         "export DEPLOY_MODE=%s" % recipe["deploy_mode"],
     ]
+    for g, v in sorted(recipe.get("gate", {}).items()):
+        lines.append("# gate %s=%s" % (g, v))
     lines += ["export %s=%s" % (k, v) for k, v in sorted(recipe["env"].items())]
     lines += [
         "",
@@ -974,9 +979,12 @@ def qualify(repo, *, seed=None, chain=(), use_agent=False, netns=False, probe=Fa
 
     if not prepare and not verify:
         # A7: nothing to propose is a first-class no-go, not a failure.
-        gate.update({"G1": "skip", "G2": "skip", "G3": "skip", "G3b": "skip",
-                     "G4": "skip", "G5": "skip", "G6": "skip", "G7": "skip",
-                     "G8": "skip", "G9": "skip", "G10": "skip"})
+        gate.update({"G1": "skip(no-commands)", "G2": "skip(no-commands)",
+                     "G3": "skip(no-commands)", "G3b": "skip(no-probe)",
+                     "G4": "skip(no-commands)", "G5": "skip(no-netns)",
+                     "G6": "skip(no-commands)", "G7": "skip(no-commands)",
+                     "G8": "skip(no-commands)", "G9": "skip(no-hooks)",
+                     "G10": "skip(no-adapter)"})
         gap = merged.get("gap") or ("no build/test commands proposed; no docs named them"
                                     if not checks["fingerprint"]["docs"] else
                                     "no commands proposed (run with --agent or --seed)")
@@ -992,8 +1000,10 @@ def qualify(repo, *, seed=None, chain=(), use_agent=False, netns=False, probe=Fa
             if hook_finding:
                 checks["hooks"]["commit_msg_linter"] = hook_finding
         else:
-            gate.update({g: "skip" for g in ("G1", "G2", "G3", "G3b", "G4", "G5",
-                                             "G6", "G9")})
+            gate.update({g: "skip(no-dry-run)" for g in
+                         ("G1", "G2", "G3", "G4", "G6", "G9")})
+            gate["G3b"] = "skip(no-probe)"
+            gate["G5"] = "skip(no-netns)"
         prov = check_provenance(repo, evdir,
                                 [("prepare", e) for e in prepare]
                                 + [("verify", e) for e in verify])
@@ -1066,9 +1076,9 @@ def _adapter_gate(merged, evdir=None):
         return "pass"
     path = adapter.get("path")
     if not path or evdir is None or not os.path.isfile(path):
-        return "skip"
+        return "skip(no-adapter)"
     if adapter.get("zero_tests_probe") is False:
-        return "skip"
+        return "skip(operator)"
     scratch = tempfile.mkdtemp(prefix="qualify-zerotests-")
     try:
         res = _run([path], cwd=scratch, timeout_s=120,

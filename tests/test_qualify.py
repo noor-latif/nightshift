@@ -355,8 +355,9 @@ class TestDryRun(QualifyCase):
         # no installed hooks: the A/B would be vacuous, so G9 skips with the reason
         self.assertEqual(r["gate"]["G9"], "skip(no-hooks)")
         # out of scope for a free run, and honestly recorded as such
-        for g in ("G3b", "G5", "G10"):
-            self.assertEqual(r["gate"][g], "skip")
+        self.assertEqual(r["gate"]["G3b"], "skip(no-probe)")
+        self.assertEqual(r["gate"]["G5"], "skip(no-netns)")
+        self.assertEqual(r["gate"]["G10"], "skip(no-adapter)")
         self.assertEqual(r["gap"], "G3b,G5,G9,G10")
         self.assertEqual(r["verify"][0]["observed_at_base"]["count"], 3)
         self.assertEqual(r["verify"][0]["source"]["kind"], "dryrun")
@@ -374,10 +375,62 @@ class TestDryRun(QualifyCase):
         self.assertEqual(r["gate"]["G3"], "fail")
         for g in ("G4", "G5", "G3b"):
             self.assertEqual(r["gate"][g], "skip(G3)", "%s: %s" % (g, r["gate"]))
-        # with G3 green, a skip for an absent input stays a bare skip
+        # with G3 green, a skip for an absent input says which input
         _, r2 = self._run()
         self.assertEqual(r2["gate"]["G3"], "pass")
-        self.assertEqual(r2["gate"]["G5"], "skip")
+        self.assertEqual(r2["gate"]["G5"], "skip(no-netns)")
+
+    def test_absent_input_skips_carry_reason_markers(self):
+        """F6: a skip caused by an absent operator input names the input, so
+        the gate table never shows a bare `skip` for an unmeasured gate."""
+        # no --netns, no --probe: the two absent-input skips in one pass
+        _, r = self._run()
+        self.assertEqual(r["gate"]["G5"], "skip(no-netns)")
+        self.assertEqual(r["gate"]["G3b"], "skip(no-probe)")
+        self.assertEqual(r["gap"], "G3b,G5,G9,G10")
+        # --probe given but G3 not green: the blocked-by marker wins, the
+        # probe never ran, and the recipe must not claim otherwise
+        red = _write(os.path.join(self.tmp, "red.sh"),
+                     "#!/usr/bin/env bash\necho 'boom'\nexit 1\n", 0o755)
+        _, r2 = self._run(probe=True, seed_over={
+            "verify": [{"argv": [red], "timeout_s": 60, "expect_at_base": "exit0"}],
+            "collection_probe": {"kind": "append_test", "target": "tests/probe.txt",
+                                 "snippet": "# test probe-fail"}})
+        self.assertEqual(r2["gate"]["G3"], "fail")
+        self.assertEqual(r2["gate"]["G3b"], "skip(G3)")
+        # --no-hooks-ab only matters when hooks exist; with hooks present and
+        # the flag off, the operator opt-out names itself. A hook-free clone
+        # stays skip(no-hooks): the A/B is vacuous regardless of the flag.
+        repo3 = self.suite_repo()
+        self.assertEqual(qualify.dry_run(repo3, "HEAD", [], [], 0, "tap", 60,
+                                         self.evdir("ev4"), {}, hooks_ab=False,
+                                         hooks_present=True, hooks_poisoned=True)[0]["G9"],
+                         "skip(no-hooks-ab)")
+        self.assertEqual(qualify.dry_run(repo3, "HEAD", [], [], 0, "tap", 60,
+                                         self.evdir("ev5"), {}, hooks_ab=True,
+                                         hooks_present=False)[0]["G9"],
+                         "skip(no-hooks)")
+
+    def test_static_and_no_command_paths_tag_their_skips(self):
+        """F6: the early-exit gate dicts get the same treatment."""
+        repo = self.suite_repo()
+        suite = os.path.join(self.tmp, "suite.sh")
+        # --no-dry-run: nothing was measured because the operator said so
+        r = qualify.qualify(repo, seed=self.seed(repo, suite),
+                            evdir=self.evdir(), dry_run_enabled=False)
+        self.assertEqual(r["gate"]["G1"], "skip(no-dry-run)")
+        self.assertEqual(r["gate"]["G5"], "skip(no-netns)")
+        self.assertEqual(r["gate"]["G3b"], "skip(no-probe)")
+        self.assertEqual(r["gate"]["G9"], "skip(no-dry-run)")
+        # no commands at all: there was nothing to measure with
+        r2 = qualify.qualify(repo, seed=self.seed(repo, suite, prepare=[],
+                                                  verify=[]),
+                             evdir=self.evdir("ev2"))
+        self.assertEqual(r2["gate"]["G1"], "skip(no-commands)")
+        self.assertEqual(r2["gate"]["G5"], "skip(no-netns)")
+        self.assertEqual(r2["gate"]["G3b"], "skip(no-probe)")
+        self.assertEqual(r2["gate"]["G9"], "skip(no-hooks)")
+        self.assertEqual(r2["gate"]["G10"], "skip(no-adapter)")
 
     def test_default_path_checks_the_proposed_quote_not_only_the_receipt(self):
         """F2: dry_run must not overwrite `source` with its receipt, or G7's
@@ -455,7 +508,7 @@ class TestDryRun(QualifyCase):
         self.assertEqual(r["gate"]["G9"], "pass")
         # with no escape declared there is nothing to prove, and no commit is made
         r2 = qualify.qualify(repo, seed=self.seed(repo, suite), evdir=self.evdir("ev2"))
-        self.assertEqual(r2["gate"]["G9"], "skip")
+        self.assertEqual(r2["gate"]["G9"], "skip(no-escape)")
 
     def test_g9_fails_when_the_escape_does_not_work(self):
         repo, _ = self.repo(files={"README.md": "# r\n",
@@ -533,7 +586,7 @@ class TestDryRun(QualifyCase):
         suite = os.path.join(self.tmp, "suite.sh")
         seed = self.seed(repo, suite, collection_probe={"kind": "append_test"})
         r = qualify.qualify(repo, seed=seed, evdir=self.evdir(), probe=True)
-        self.assertEqual(r["gate"]["G3b"], "skip")
+        self.assertEqual(r["gate"]["G3b"], "skip(bad-probe)")
 
     def test_collection_probe_accepts_a_passed_only_total(self):
         """The flox shape: the adapter's TAP total counts PASSED tests, so an
@@ -638,9 +691,10 @@ class TestConfigGates(QualifyCase):
                          '"merge_mode":"review"}')
 
     def test_adapter_gate_is_skipped_without_an_adapter_or_probe(self):
-        self.assertEqual(qualify._adapter_gate({}), "skip")
+        self.assertEqual(qualify._adapter_gate({}), "skip(no-adapter)")
         self.assertEqual(qualify._adapter_gate({"adapter": {"self_test": "pass"}}), "pass")
-        self.assertEqual(qualify._adapter_gate({"adapter": {"path": "/nope/x.sh"}}), "skip")
+        self.assertEqual(qualify._adapter_gate({"adapter": {"path": "/nope/x.sh"}}),
+                         "skip(no-adapter)")
 
     def test_adapter_gate_runs_the_zero_tests_probe(self):
         # an adapter that greens on zero tests is the vacuous-green hole itself
@@ -651,10 +705,11 @@ class TestConfigGates(QualifyCase):
                       "#!/bin/sh\necho '# tests 0'\nexit 1\n", 0o755)
         self.assertEqual(qualify._adapter_gate({"adapter": {"path": bad}}, ev), "fail")
         self.assertEqual(qualify._adapter_gate({"adapter": {"path": good}}, ev), "pass")
-        self.assertEqual(qualify._adapter_gate({"adapter": {"path": good}}, None), "skip")
+        self.assertEqual(qualify._adapter_gate({"adapter": {"path": good}}, None),
+                         "skip(no-adapter)")
         self.assertEqual(
             qualify._adapter_gate({"adapter": {"path": good, "zero_tests_probe": False}}, ev),
-            "skip")
+            "skip(operator)")
 
     def test_emit_env_carries_repo_keys_and_comments_task_keys(self):
         repo = self.suite_repo()
@@ -668,6 +723,9 @@ class TestConfigGates(QualifyCase):
         self.assertIn("export GITHUB_REPO=example/repo", text)
         self.assertIn("export DEPLOY_MODE=none", text)
         self.assertIn("export A=1", text)
+        # F6: the gate table (with its reason-tagged skips) flows into the
+        # env render as comments, so the launch env states what was measured
+        self.assertIn("# gate G5=skip(no-netns)", text)
         # the header hash is the recipe file's own, re-derivable with sha256sum
         self.assertIn("recipe sha256: %s" % qualify._sha256(path), text)
         for key in ("FACTORY_TASK_FILE", "CODE_PATHS", "FACTORY_NEW_FILES", "SCENARIOS_DIR"):
@@ -685,7 +743,7 @@ class TestConfigGates(QualifyCase):
     def test_status_from_gate_map(self):
         ok = {g: "pass" for g in qualify.NOGO_GATES + qualify.PARTIAL_GATES}
         self.assertEqual(qualify.compute_status(ok), "qualified")
-        ok["G5"] = "skip"
+        ok["G5"] = "skip(no-netns)"
         self.assertEqual(qualify.compute_status(ok), "partial")
         ok["G3"] = "fail"
         self.assertEqual(qualify.compute_status(ok), "no-go")
@@ -712,7 +770,7 @@ class TestNoModelCalls(QualifyCase):
     def test_no_commands_path_makes_no_model_call(self):
         r = self._assert_silent(prepare=[], verify=[])
         self.assertEqual(r["status"], "no-go")
-        self.assertEqual(r["gate"]["G1"], "skip")
+        self.assertEqual(r["gate"]["G1"], "skip(no-commands)")
         self.assertIn("no commands proposed", r["gap"])
 
     def test_failing_dry_run_makes_no_model_call(self):
@@ -776,7 +834,7 @@ class TestCLI(QualifyCase):
                            "--no-dry-run", "--out", out])
         recipe = _load(out)
         self.assertEqual(recipe["schema"], "nightshift.recipe/1")
-        self.assertEqual(recipe["gate"]["G1"], "skip")     # no build was run
+        self.assertEqual(recipe["gate"]["G1"], "skip(no-dry-run)")  # no build was run
         self.assertEqual(recipe["status"], "no-go")        # gates unproven
         self.assertEqual(rc, 1)                            # no-go exits non-zero
 
