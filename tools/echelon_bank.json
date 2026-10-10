@@ -1,7 +1,14 @@
 {
- "commit": "ffaa5a3ade9d42479922033a9954d31a817bce86",
- "locked_at": "2026-10-10T08:19:53",
- "suite_tests": 324,
+ "commit": "6c0aae11b9891b6e532adfd07d2a453de0eaed26",
+ "external": {
+  "flox_bin": "~/repos/flox-target-devsh/debug/flox",
+  "flox_oracle_dir": "~/repos/flox-replay-oracle-sealed",
+  "sqlparse_base_commit": "60cdc649726bf1bc4f1b336050560b336da715ec",
+  "sqlparse_fix_commit": "2ef77ae51b97f94d2d8970861fd3ab6531deb665",
+  "sqlparse_repo_object": "~/repos/sqlparse-lap-4001/repo"
+ },
+ "locked_at": "2026-10-10T09:37:17",
+ "suite_tests": 326,
  "verdicts": {
   "repos__factory-docs__p3-matrix-rerun__A1.review.txt": "accept",
   "repos__factory-docs__p3-matrix-rerun__A2.review.txt": "accept",
