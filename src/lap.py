@@ -168,14 +168,23 @@ def _base_pin_assert(repo, path, declared_sha):
             % (declared_sha, checked))
 
 
+# The bank oracle contract (oracle-9803.sh): exit 0 = PASS (GREEN),
+# 1 = FAIL (RED), 2 = harness error. RED at base is the only acceptable
+# non-zero; anything else means the oracle itself is broken.
+RED_EXIT = 1
+
+
 def _oracle_red_at_base(path):
     """F10 red-at-base pre-dispatch gate: run the instance oracle at the base
     checkout BEFORE any paid call. Exit 0 = GREEN = the base already contains
     the fix = a vacuous instance (9803 secondary probe: pre-tainted
     origin/main gave declared == checkout == fixed content, silently false
-    green). Non-zero is the expected RED; a set-but-unusable oracle (missing,
-    not executable, timeout) also fails closed. Runs with candidate_env() so
-    the oracle never sees kernel-config variables (same scrub as verify)."""
+    green). Exit 1 is the expected RED. Any other exit (2 = harness error,
+    signal death, ...) means the oracle itself is broken and fails closed —
+    a crashed oracle must never read as verified RED; a set-but-unusable
+    oracle (missing, not executable, timeout) also fails closed. Runs with
+    candidate_env() so the oracle never sees kernel-config variables (same
+    scrub as verify)."""
     if not ORACLE:
         return
     exe = os.path.expanduser(ORACLE)
@@ -188,10 +197,15 @@ def _oracle_red_at_base(path):
     except subprocess.TimeoutExpired:
         raise BasePinError("FACTORY_ORACLE %s timed out at base (fail closed)"
                            % ORACLE)
+    if r.returncode == RED_EXIT:
+        return
     if r.returncode == 0:
         raise BasePinError(
             "oracle GREEN at declared base — instance is vacuous/wrongly "
             "pinned (base already contains the fix)")
+    raise BasePinError(
+        "FACTORY_ORACLE %s exited %d — expected 1 (RED) or 0 (vacuous); "
+        "harness error fails closed" % (ORACLE, r.returncode))
 
 def worktree_for(issue, prefix="agent"):
     """<prefix>/issue-<n> worktree under the product repo's .factory dir.

@@ -25,7 +25,8 @@ is not hardened software, and it is not sandboxed.
   not a movable ref a fetch or pre-taint can move) and **red-at-base
   pre-dispatch** (a configured `FACTORY_ORACLE` must run RED at the base before
   any paid call; GREEN at base fails the lap operational as a vacuous
-  instance). The reasoning, and the microVM path reserved for hostile-repo
+  instance; it expects exit 1 (RED) at the base, and any other exit code
+  than 0/1 fails closed as a harness error). The reasoning, and the microVM path reserved for hostile-repo
   mode, are in `SANDBOX-MICROVM-VS-NIX_2026-10-07.md` in the working docs
   tree.
 - **Model calls go through the surplus gateway.** `src/agent.py` speaks the

@@ -219,15 +219,33 @@ class TestOracleRedAtBase(BasePinScenario):
         self.assertEqual(cm.exception.gate, "base-pin")
 
     def test_oracle_red_at_base_proceeds_unchanged(self):
-        # RED (exit != 0) is the expected state; the worktree is left
+        # RED (exit 1) is the expected state; the worktree is left
         # untouched at the base checkout
         self.set_oracle(self.write_oracle(
-            "#!/bin/sh\n[ \"$(cat app.py)\" = \"x = 1\\n\" ] || exit 9\n"))
+            "#!/bin/sh\n[ \"$(cat app.py)\" = \"x = 1\\n\" ] || exit 1\n"))
         path = lap.worktree_for(self.ISSUE)
         self.assertEqual(path, self.path)
         self.assertEqual(self.worktree_head(), self.old_sha)
         with open(os.path.join(self.path, "app.py")) as f:
             self.assertEqual(f.read(), "x = 1\n")
+
+    def test_oracle_harness_error_fails_closed(self):
+        # F10b: exit 2 is the oracle-contract harness-error code; a broken
+        # oracle must fail closed, never read as verified RED
+        self.set_oracle(self.write_oracle("#!/bin/sh\nexit 2\n"))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn("harness error fails closed", str(cm.exception))
+        self.assertIn("exited 2", str(cm.exception))
+        self.assertEqual(cm.exception.gate, "base-pin")
+
+    def test_oracle_command_not_found_fails_closed(self):
+        # F10b: 127 (command-not-found) — the oracle crashed, not RED
+        self.set_oracle(self.write_oracle("#!/bin/sh\nexit 127\n"))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn("exited 127", str(cm.exception))
+        self.assertIn("harness error fails closed", str(cm.exception))
 
     def test_oracle_sees_scrubbed_env(self):
         # the oracle runs with candidate_env(): kernel-config variables are
