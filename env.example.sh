@@ -60,6 +60,18 @@
 # a pattern; `..`, absolute and `~` entries are always rejected).
 # export FACTORY_NEW_FILES=""
 
+# F10 base pin. Default: "" (unset) -> resolve FACTORY_BASE_REF at lap start.
+# Set to the exact commit id the lap must run on (e.g. the defect base); the
+# worktree is checked out at that sha regardless of where the ref points.
+# RECOMMENDED for every bank recipe: a movable ref cannot encode "this base".
+# export FACTORY_BASE_SHA=""
+
+# F10 red-at-base gate. Default: "" (unset) -> no pre-dispatch oracle run.
+# Set to an ABSOLUTE path of an executable oracle; worktree_for() runs it at
+# the base checkout BEFORE any paid call and fails the lap operational
+# (gate=base-pin) if it exits 0 — GREEN at base = vacuous instance.
+# export FACTORY_ORACLE=""
+
 # ---------------------------------------------------------------------------
 # Cost + repo knobs
 # ---------------------------------------------------------------------------

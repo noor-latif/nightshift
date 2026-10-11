@@ -19,9 +19,15 @@ is not hardened software, and it is not sandboxed.
   your env, delete files, use the network. The only containment in the design is
   the **per-repo trust model**: you read a repo's build/test commands and decide
   to run them. (`unshare -rn` appears in `qualify.py` only as the opt-in G5
-  dead-egress *probe*; it never wraps a lap's own commands.) The reasoning, and
-  the microVM path reserved for hostile-repo mode, are in
-  `SANDBOX-MICROVM-VS-NIX_2026-10-07.md` in the working docs tree.
+  dead-egress *probe*; it never wraps a lap's own commands.) Two base-integrity
+  guards protect the measurement itself: **base-pinning** (the worktree is
+  asserted — and with `FACTORY_BASE_SHA` pinned — to the declared defect base,
+  not a movable ref a fetch or pre-taint can move) and **red-at-base
+  pre-dispatch** (a configured `FACTORY_ORACLE` must run RED at the base before
+  any paid call; GREEN at base fails the lap operational as a vacuous
+  instance). The reasoning, and the microVM path reserved for hostile-repo
+  mode, are in `SANDBOX-MICROVM-VS-NIX_2026-10-07.md` in the working docs
+  tree.
 - **Model calls go through the surplus gateway.** `src/agent.py` speaks the
   gateway's OpenAI-compatible API (`SURPLUS_BASE_URL` + `/v1/chat/completions`,
   or `/v1/responses` per role); `agent.chat()` is the only egress. A missing

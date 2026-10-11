@@ -38,6 +38,8 @@ import merge
 import verify
 from settings import (
     BASE_REF,
+    BASE_SHA,
+    ORACLE,
     CHECKOUT_CHAR_BUDGET,
     CODE_PATHS,
     COST_CEILING_USD,
@@ -166,6 +168,31 @@ def _base_pin_assert(repo, path, declared_sha):
             % (declared_sha, checked))
 
 
+def _oracle_red_at_base(path):
+    """F10 red-at-base pre-dispatch gate: run the instance oracle at the base
+    checkout BEFORE any paid call. Exit 0 = GREEN = the base already contains
+    the fix = a vacuous instance (9803 secondary probe: pre-tainted
+    origin/main gave declared == checkout == fixed content, silently false
+    green). Non-zero is the expected RED; a set-but-unusable oracle (missing,
+    not executable, timeout) also fails closed. Runs with candidate_env() so
+    the oracle never sees kernel-config variables (same scrub as verify)."""
+    if not ORACLE:
+        return
+    exe = os.path.expanduser(ORACLE)
+    if not (os.path.isfile(exe) and os.access(exe, os.X_OK)):
+        raise BasePinError(
+            "FACTORY_ORACLE %s is not an executable file (fail closed)" % ORACLE)
+    try:
+        r = subprocess.run([exe], cwd=path, capture_output=True, text=True,
+                           timeout=600, env=verify.candidate_env())
+    except subprocess.TimeoutExpired:
+        raise BasePinError("FACTORY_ORACLE %s timed out at base (fail closed)"
+                           % ORACLE)
+    if r.returncode == 0:
+        raise BasePinError(
+            "oracle GREEN at declared base — instance is vacuous/wrongly "
+            "pinned (base already contains the fix)")
+
 def worktree_for(issue, prefix="agent"):
     """<prefix>/issue-<n> worktree under the product repo's .factory dir.
     Laps use the factory-owned agent/ ref; the dispatch-time RED re-check
@@ -176,14 +203,26 @@ def worktree_for(issue, prefix="agent"):
     guard asserts the checkout HEAD == that declared base (fail-closed,
     operational on mismatch) — the 9803 a1 fault (origin == self, fetch
     re-resolved origin/main past the pinned base) can no longer produce a
-    silent already-fixed checkout."""
+    silent already-fixed checkout.
+
+    F10 base-integrity gates, layered on F9:
+    - FACTORY_BASE_SHA: an explicit, immutable base pin. When set, the
+      worktree is checked out at THAT commit id, never a movable ref —
+      refs state at lap start cannot change what the lap runs on. A
+      BASE_REF that resolves elsewhere is not an error (the sha wins); the
+      checkout itself must equal the sha or the lap fails closed.
+    - FACTORY_ORACLE: red-at-base pre-dispatch. The instance oracle runs at
+      the base checkout before any paid call; GREEN (exit 0) means the base
+      already contains the fix — operational fail (gate=base-pin)."""
     repo = os.path.expanduser(PRODUCT_REPO)
     path = _worktree_path(issue, prefix)
     branch = "%s/issue-%d" % (prefix, issue)
-    base = BASE_REF
+    base = BASE_SHA or BASE_REF
     # capture the DECLARED base sha BEFORE anything can move it (the fetch
     # below is exactly such a mover — 9803 a1); the guard at the end compares
-    # the checkout against this captured id.
+    # the checkout against this captured id. An explicit BASE_SHA is resolved
+    # to the full object id here too, so the post-checkout assert is the same
+    # comparison either way.
     declared_sha = _git(["rev-parse", "--verify", base + "^{commit}"], repo)
     remote = _git(["remote", "get-url", "origin"], repo)
     if os.path.realpath(os.path.join(repo, remote)) == os.path.realpath(repo):
@@ -191,13 +230,28 @@ def worktree_for(issue, prefix="agent"):
         # re-resolve origin/main from the local main branch and silently
         # advance the base past the pin (9803 a1). Skip the fetch — the
         # base-pinning assertion below is the safety net either way.
-        pass
+        # F10: divergent main vs origin/main in a self-clone means the pin is
+        # ambiguous (the negctl §3 taint left main=60cdc64, origin/main=
+        # f80af6a) — fail closed. Equal refs: no-op. Only when both exist; a
+        # repo without a local main branch keeps working.
+        def _ref_sha(ref):
+            r = subprocess.run(
+                ["git", "rev-parse", "--verify", ref + "^{commit}"], cwd=repo,
+                capture_output=True, text=True)
+            return r.stdout.strip() if r.returncode == 0 else None
+        main_sha = _ref_sha("refs/heads/main")
+        origin_sha = _ref_sha("refs/remotes/origin/main")
+        if main_sha and origin_sha and main_sha != origin_sha:
+            raise BasePinError(
+                "self-clone pin ambiguous: main %s != origin/main %s"
+                % (main_sha, origin_sha))
     else:
         _git(["fetch", "origin", "main", "--prune"], repo)
     _worktree_add(repo, path, branch, base)
     _git(["reset", "--hard", base], path)
     _git(["clean", "-fdx"], path)
     _base_pin_assert(repo, path, declared_sha)
+    _oracle_red_at_base(path)
     return path
 
 

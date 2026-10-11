@@ -8,6 +8,16 @@ PRODUCT_REPO = os.environ.get("PRODUCT_REPO", "~/factory-lab/toy-product")  # lo
 # exactly this rev; a mismatch fails the lap as operational before any paid
 # call. Rev or branch name — resolved to an object id at guard time.
 BASE_REF = os.environ.get("FACTORY_BASE_REF", "origin/main")
+# Explicit base pin (F10): when set, worktree_for() checks out THIS exact
+# commit id (immutable), not the BASE_REF rev — a movable ref cannot encode
+# "this defect base". When unset, behavior is F9 (resolve BASE_REF at call
+# time).
+BASE_SHA = os.environ.get("FACTORY_BASE_SHA", "")
+# Red-at-base pre-dispatch gate (F10): path to an executable oracle; when set,
+# worktree_for() runs it at the base checkout BEFORE any paid call and fails
+# the lap operational (gate=base-pin) if it exits 0 — a GREEN oracle at the
+# base means the instance is vacuous (base already contains the fix).
+ORACLE = os.environ.get("FACTORY_ORACLE", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "noor-latif/toy-product")
 # "app" = boot + identity readback (toy-product); "none" = library repos with
 # nothing to deploy and no live rig to compare identity against.

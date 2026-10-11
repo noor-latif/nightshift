@@ -119,19 +119,158 @@ class TestBasePinMismatch(BasePinScenario):
 
 class TestSelfCloneFetchGuard(BasePinScenario):
     """(3) self-referential origin (bank recipe): fetching nothing keeps the
-    checkout ref from being re-resolved past the pin."""
+    checkout ref from being re-resolved past the pin. F10: a self-clone whose
+    main and origin/main DIVERGE has an ambiguous pin — BasePinError. So the
+    scenario pins BOTH refs to the defect base (the 9803-a2 operator re-pin),
+    proving the fetch-skip path leaves the checkout at the pin."""
 
     def test_self_clone_fetch_skipped_keeps_pin(self):
         git(self.repo, "remote", "set-url", "origin", ".")
         self.pin_old()
-        # the local main branch sits at the fix (a real clone of upstream);
-        # WITHOUT the guard `fetch origin main` would drag origin/main there
+        # both refs at the pin (9803-a2 shape): the fetch-skip must leave the
+        # worktree at the declared base even though a divergent local main
+        # would drag origin/main to the fix if the fetch ran
+        git(self.repo, "update-ref", "refs/heads/main", self.old_sha)
         self.assertEqual(git(self.repo, "rev-parse", "refs/heads/main"),
-                         self.new_sha)
+                         self.old_sha)
         lap.worktree_for(self.ISSUE)
         self.assertEqual(self.worktree_head(), self.old_sha)
         self.assertEqual(git(self.repo, "rev-parse", "origin/main"), self.old_sha)
 
+    def test_self_clone_divergent_refs_fail_closed(self):
+        # F10: the negctl §3 taint left main=60cdc64 (fix) while
+        # origin/main=f80af6a (pin) — a self-clone with divergent refs has an
+        # ambiguous pin and must fail closed, never silently pick one
+        git(self.repo, "remote", "set-url", "origin", ".")
+        self.pin_old()
+        # main stays at the fix (clone default), origin/main pinned old:
+        # refs diverge
+        self.assertNotEqual(git(self.repo, "rev-parse", "refs/heads/main"),
+                            git(self.repo, "rev-parse",
+                                "refs/remotes/origin/main"))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn("self-clone pin ambiguous", str(cm.exception))
+        self.assertIn(self.new_sha, str(cm.exception))
+        self.assertIn(self.old_sha, str(cm.exception))
+
+    def test_self_clone_without_local_main_still_works(self):
+        # consistency assert fires only when BOTH refs exist; a repo with no
+        # local main branch (detached checkout) keeps the F9 behavior
+        git(self.repo, "remote", "set-url", "origin", ".")
+        self.pin_old()
+        git(self.repo, "update-ref", "-d", "refs/heads/main")
+        lap.worktree_for(self.ISSUE)
+        self.assertEqual(self.worktree_head(), self.old_sha)
+
+class TestShaPinnedBase(BasePinScenario):
+    """F10 (a): FACTORY_BASE_SHA is an immutable pin — honored even when
+    origin/main has moved elsewhere."""
+
+    def setUp(self):
+        super().setUp()
+        _p = unittest.mock.patch.object(lap, "BASE_SHA", self.old_sha)
+        _p.start()
+        self.addCleanup(_p.stop)
+
+    def test_sha_pin_honored_when_origin_main_moved(self):
+        # origin/main pre-tainted to the fix (negctl §3 shape): the sha pin
+        # still lands the worktree on the declared defect base
+        git(self.repo, "update-ref", "refs/remotes/origin/main", self.new_sha)
+        lap.worktree_for(self.ISSUE)
+        self.assertEqual(self.worktree_head(), self.old_sha)
+
+    def test_ref_mismatch_is_not_an_error(self):
+        # BASE_REF resolves elsewhere but the checkout equals the sha: the
+        # sha wins, no exception (the ref is mutable, the pin is not)
+        git(self.repo, "update-ref", "refs/remotes/origin/main", self.new_sha)
+        lap.worktree_for(self.ISSUE)  # BASE_REF=origin/main -> new_sha, sha wins
+        self.assertEqual(self.worktree_head(), self.old_sha)
+
+class TestOracleRedAtBase(BasePinScenario):
+    """F10 (b)-(d): the red-at-base pre-dispatch gate."""
+
+    def setUp(self):
+        super().setUp()
+        _p = unittest.mock.patch.object(lap, "BASE_SHA", self.old_sha)
+        _p.start()
+        self.addCleanup(_p.stop)
+        self.oracle = os.path.join(self.base, "oracle.sh")
+
+    def set_oracle(self, value):
+        lap.ORACLE = value
+        self.addCleanup(setattr, lap, "ORACLE", "")
+        return value
+
+    def write_oracle(self, body):
+        with open(self.oracle, "w") as f:
+            f.write(body)
+        os.chmod(self.oracle, 0o755)
+        return self.oracle
+
+    def test_oracle_green_at_base_fails_vacuous(self):
+        # a GREEN oracle at the base = the base already contains the fix =
+        # vacuous instance; must fail closed before any paid call
+        self.set_oracle(self.write_oracle("#!/bin/sh\nexit 0\n"))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn("oracle GREEN at declared base", str(cm.exception))
+        self.assertIn("vacuous", str(cm.exception))
+        self.assertEqual(cm.exception.gate, "base-pin")
+
+    def test_oracle_red_at_base_proceeds_unchanged(self):
+        # RED (exit != 0) is the expected state; the worktree is left
+        # untouched at the base checkout
+        self.set_oracle(self.write_oracle(
+            "#!/bin/sh\n[ \"$(cat app.py)\" = \"x = 1\\n\" ] || exit 9\n"))
+        path = lap.worktree_for(self.ISSUE)
+        self.assertEqual(path, self.path)
+        self.assertEqual(self.worktree_head(), self.old_sha)
+        with open(os.path.join(self.path, "app.py")) as f:
+            self.assertEqual(f.read(), "x = 1\n")
+
+    def test_oracle_sees_scrubbed_env(self):
+        # the oracle runs with candidate_env(): kernel-config variables are
+        # scrubbed, and cwd is the base worktree
+        self.set_oracle(self.write_oracle(
+            '#!/bin/sh\necho "$PWD|$PRODUCT_REPO|$F10_PROBE" > envdump.txt\nexit 1\n'))
+        os.environ["PRODUCT_REPO"] = "/leaked/product/repo"
+        self.addCleanup(os.environ.pop, "PRODUCT_REPO", None)
+        os.environ["F10_PROBE"] = "passes-through"
+        self.addCleanup(os.environ.pop, "F10_PROBE", None)
+        lap.worktree_for(self.ISSUE)
+        with open(os.path.join(self.path, "envdump.txt")) as f:
+            cwd, product, probe = f.read().strip().split("|")
+        self.assertEqual(cwd, self.path)
+        self.assertEqual(product, "")  # kernel-config scrubbed
+        self.assertEqual(probe, "passes-through")  # non-kernel env passes
+
+    def test_oracle_path_set_but_missing_fails_closed(self):
+        self.set_oracle(os.path.join(self.base, "does-not-exist.sh"))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn("not an executable file", str(cm.exception))
+        self.assertEqual(cm.exception.gate, "base-pin")
+
+    def test_oracle_set_but_unexecutable_fails_closed(self):
+        with open(self.oracle, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(self.oracle, 0o644)  # exists but not executable
+        self.set_oracle(self.oracle)
+        with self.assertRaises(lap.BasePinError):
+            lap.worktree_for(self.ISSUE)
+
+class TestUnsetF10Compat(BasePinScenario):
+    """F10 (f): FACTORY_ORACLE unset + FACTORY_BASE_SHA unset -> byte-identical
+    F9 behavior (defaults; happy path unchanged)."""
+
+    def test_unset_sha_and_oracle_matches_f9_happy_path(self):
+        self.assertEqual(lap.BASE_SHA, "")
+        self.assertEqual(lap.ORACLE, "")
+        lap.worktree_for(self.ISSUE)
+        self.assertEqual(self.worktree_head(), self.new_sha)
+        self.assertEqual(self.worktree_head(),
+                         git(self.repo, "rev-parse", "origin/main"))
 
 if __name__ == "__main__":
     unittest.main()
