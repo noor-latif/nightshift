@@ -45,18 +45,22 @@ frozen, redacted ledger that ships with the repo.
 
 Within a lap the two quality gates run in a fixed order: **mechanical
 verification first, LLM review second** (implement → mutation-apply → commit
-→ verify → review → merge). A candidate that fails the native verify ends
-there — no reviewer call is spent on a candidate the oracle already rejected.
-A candidate that passes verify is then reviewed with the mechanical result
-inlined into the reviewer prompt as a receipt (suite status/count, oracle
-verdicts); the reviewer's remit is what the oracle does not cover, and
-overriding an executed result requires quoting deciding text and arguing why
-the mechanical result does not decide the criterion. Nothing merges unless
-both gates pass. The order is deliberate: a verified-clean candidate was once
-false-rejected by the reviewer ahead of the oracle's own control verdict, and
-the review literature shows evidence-quote rubrics amplify such false
-rejections — execution evidence belongs in the loop before judgment, not
-after it.
+→ verify → review → merge). Execution of candidate code — the test suite, and
+with `DEPLOY_MODE!=none` the boot, scenario and provenance probes — happens in
+a disposable clone (a throwaway worktree off `origin/main`, removed when the
+lap ends), gated by env scrubbing (the launch env minus every kernel-config
+variable is what a candidate argv sees) and the cost ceiling, **before**
+judgment. A candidate that fails the native verify ends there — no reviewer
+call is spent on a candidate the oracle already rejected. A candidate that
+passes verify is then reviewed with the verify receipts inlined into the
+reviewer prompt (suite status/count, oracle verdicts); the reviewer veto
+covers the criteria the mechanical gate cannot adjudicate, and overriding an
+executed result requires quoting deciding text and arguing why the mechanical
+result does not decide the criterion. Nothing merges unless both gates pass.
+The order is deliberate: a verified-clean candidate was once false-rejected by
+the reviewer ahead of the oracle's own control verdict, and the review
+literature shows evidence-quote rubrics amplify such false rejections —
+execution evidence belongs in the loop before judgment, not after it.
 
 ## Layout
 
