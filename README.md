@@ -76,6 +76,15 @@ after it.
   posted to the operator's real topic); this is a child-env fix, not a
   general network restriction — other clones are not presumed fixed.
 
+## Tools
+
+`tools/preflight_instance.py <task-file> <env-file> <repo-at-base>` is the
+required step before banking any instance: it refuses (non-zero, with the
+reason) an instance whose `SCOPE_PATHS` a `CODE_PATHS` glob cannot reach,
+whose `CODE_PATHS` view exceeds `CHECKOUT_CHAR_BUDGET`, or whose `CODE_PATHS`
+matches no file — the three authoring defects that make an oracle unreachable
+regardless of the model's code.
+
 ## Run
 
     python3 -m unittest discover -s tests
