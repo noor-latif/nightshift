@@ -4,6 +4,10 @@ import os
 
 
 PRODUCT_REPO = os.environ.get("PRODUCT_REPO", "~/factory-lab/toy-product")  # local path: expanded and used as a local git cwd
+# Declared lap base (F9, after issue-9803 a1): worktree_for() must check out
+# exactly this rev; a mismatch fails the lap as operational before any paid
+# call. Rev or branch name — resolved to an object id at guard time.
+BASE_REF = os.environ.get("FACTORY_BASE_REF", "origin/main")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "noor-latif/toy-product")
 # "app" = boot + identity readback (toy-product); "none" = library repos with
 # nothing to deploy and no live rig to compare identity against.

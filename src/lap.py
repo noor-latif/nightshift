@@ -37,6 +37,7 @@ import deploy
 import merge
 import verify
 from settings import (
+    BASE_REF,
     CHECKOUT_CHAR_BUDGET,
     CODE_PATHS,
     COST_CEILING_USD,
@@ -123,6 +124,12 @@ class LapTimeout(Exception):
 class CostCeilingExceeded(Exception):
     pass
 
+class OperationalFault(Exception):
+    pass
+
+class BasePinError(OperationalFault):
+    gate = "base-pin"
+
 
 def _git(args, cwd, check=True):
     r = subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
@@ -143,33 +150,70 @@ def _worktree_path(issue, prefix="agent"):
                         "worktrees", "%s-issue-%d" % (prefix, issue))
 
 
+def _base_pin_assert(repo, path, declared_sha):
+    """F9 base-pinning guard (issue-9803 a1): what the lap runs must be the
+    DECLARED base. The 9803 a1 fault: origin == self, so `fetch origin main`
+    re-resolved origin/main from the LOCAL main branch — which already
+    contained the fix — and the checkout silently advanced past the pinned
+    defect base (vacuous resolve, false green caught only by operator audit).
+    The declared sha is captured BEFORE the fetch: a fetch that moves the base
+    ref is precisely the failure this guard exists for, so comparing against a
+    post-fetch re-resolution would be vacuous."""
+    checked = _git(["rev-parse", "HEAD"], path)
+    if declared_sha != checked:
+        raise BasePinError(
+            "declared base %s != checkout %s after fetch (vacuous-already-fixed risk)"
+            % (declared_sha, checked))
+
+
 def worktree_for(issue, prefix="agent"):
     """<prefix>/issue-<n> worktree under the product repo's .factory dir.
     Laps use the factory-owned agent/ ref; the dispatch-time RED re-check
-    (L-013) uses a throwaway recheck/ ref it never pushes."""
+    (L-013) uses a throwaway recheck/ ref it never pushes.
+
+    The lap base is FACTORY_BASE_REF (default "origin/main"): the declared
+    rev the whole lap resolves against. After resolution the F9 base-pinning
+    guard asserts the checkout HEAD == that declared base (fail-closed,
+    operational on mismatch) — the 9803 a1 fault (origin == self, fetch
+    re-resolved origin/main past the pinned base) can no longer produce a
+    silent already-fixed checkout."""
     repo = os.path.expanduser(PRODUCT_REPO)
     path = _worktree_path(issue, prefix)
     branch = "%s/issue-%d" % (prefix, issue)
-    _git(["fetch", "origin", "main", "--prune"], repo)
-    _worktree_add(repo, path, branch)
-    _git(["reset", "--hard", "origin/main"], path)
+    base = BASE_REF
+    # capture the DECLARED base sha BEFORE anything can move it (the fetch
+    # below is exactly such a mover — 9803 a1); the guard at the end compares
+    # the checkout against this captured id.
+    declared_sha = _git(["rev-parse", "--verify", base + "^{commit}"], repo)
+    remote = _git(["remote", "get-url", "origin"], repo)
+    if os.path.realpath(os.path.join(repo, remote)) == os.path.realpath(repo):
+        # self-referential clone (bank recipe): `fetch origin main` would
+        # re-resolve origin/main from the local main branch and silently
+        # advance the base past the pin (9803 a1). Skip the fetch — the
+        # base-pinning assertion below is the safety net either way.
+        pass
+    else:
+        _git(["fetch", "origin", "main", "--prune"], repo)
+    _worktree_add(repo, path, branch, base)
+    _git(["reset", "--hard", base], path)
     _git(["clean", "-fdx"], path)
+    _base_pin_assert(repo, path, declared_sha)
     return path
 
 
-def _worktree_add(repo, path, branch, _retry=True):
+def _worktree_add(repo, path, branch, base, _retry=True):
     """worktree add, self-healing a registered-path collision (L-016):
     a crashed/killed lap can leave its worktree registered; unattended runs
     cannot depend on operator cleanup between launches. Only the collision
     signature heals; anything else fails loud as before."""
-    r = subprocess.run(["git", "worktree", "add", path, "-B", branch, "origin/main"],
+    r = subprocess.run(["git", "worktree", "add", path, "-B", branch, base],
                        cwd=repo, capture_output=True, text=True)
     if r.returncode != 0 and "already exists" not in r.stderr and "already registered" not in r.stderr:
         if _retry and "is already used by worktree at" in r.stderr:
             subprocess.run(["git", "worktree", "remove", "--force", path],
                            cwd=repo, capture_output=True)
             subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True)
-            return _worktree_add(repo, path, branch, _retry=False)
+            return _worktree_add(repo, path, branch, base, _retry=False)
         raise RuntimeError("worktree add failed: %s" % r.stderr.strip())
     return r
 
@@ -1100,6 +1144,9 @@ def run(issue):
         finish(lap, "success")
     except CostCeilingExceeded as e:
         finish(lap, "failure", gate="cost", error=str(e))
+    except OperationalFault as e:
+        # structural/instance fault, not coding: fail-closed, no scored retry
+        finish(lap, "failure", gate=getattr(e, "gate", "operational"), error=str(e))
     except agent.PermanentError as e:
         finish(lap, "failure", gate="gateway", error="permanent: %s" % e)
     except agent.TransientError as e:
