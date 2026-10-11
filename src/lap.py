@@ -414,10 +414,63 @@ def _line_context(text, pos):
     return line, pos - start + 1, text[start:end]
 
 
+def _line_snippet(hay, center, note=""):
+    """Verbatim real-file lines around `center` (1-based), each prefixed
+    with its line number; blank lines show up as '' so blank-line drift is
+    visible. `note` carries the anchor-vs-file delta when one exists."""
+    lines = hay.split("\n")
+    lo = max(1, center - 3)
+    hi = min(len(lines), center + 3)
+    body = " | ".join("%d: %r" % (n, lines[n - 1])
+                      for n in range(lo, hi + 1))
+    return "file lines %d-%d: %s%s" % (lo, hi, body, note)
+
 def _anchor_miss_diagnosis(needle, hay):
-    """Explain the first difference in the best matching file region."""
+    """Explain an anchor miss without repairing it (L-008): locate the
+    anchor's last meaningful line in the file by whitespace-tolerant line
+    search (the insertion-point neighbor — 9801's miss was blank-line drift
+    just above it) and show the verbatim real-file snippet around it plus
+    what the anchor expected, explicitly calling out blank-line/indent
+    deltas. Falls back to the first meaningful line, then to
+    first-divergence when neither line exists in the file."""
     if not hay:
-        return "file is empty; no best-match region exists"
+        return "file is empty; nothing to anchor on"
+    needle_lines = needle.split("\n")
+    file_lines = hay.split("\n")
+    meaningful = [(i, l) for i, l in enumerate(needle_lines) if l.strip()]
+    if not meaningful:
+        return _anchor_divergence_diagnosis(needle, hay)
+    hit = None
+    for idx, line in (meaningful[-1], meaningful[0]):
+        stripped = line.strip()
+        hit = next((i for i, l in enumerate(file_lines)
+                    if l.strip() == stripped), None)
+        if hit is not None:
+            break
+    if hit is None:
+        return _anchor_divergence_diagnosis(needle, hay)
+    want, got = _blank_run(needle_lines, idx), _blank_run(file_lines, hit)
+    if want != got:
+        note = "; anchor has %d blank line(s) before %r, file has %d" % (
+            want, line, got)
+    elif needle_lines[idx] != file_lines[hit]:
+        note = "; whitespace drift: anchor %r vs file %r" % (
+            needle_lines[idx], file_lines[hit])
+    else:
+        note = ""
+    return _line_snippet(hay, hit + 1, note)
+
+def _blank_run(lines, i):
+    """Blank lines immediately before lines[i] (9801's delta class)."""
+    n = 0
+    for j in range(i - 1, -1, -1):
+        if lines[j].strip():
+            break
+        n += 1
+    return n
+
+def _anchor_divergence_diagnosis(needle, hay):
+    """Explain the first difference in the best matching file region."""
     match = difflib.SequenceMatcher(None, needle, hay, autojunk=False).find_longest_match(
         0, len(needle), 0, len(hay))
     start = max(0, match.b - match.a)
@@ -442,7 +495,6 @@ def _anchor_miss_diagnosis(needle, hay):
          expected, actual)
     )
 
-
 def _anchor_occurrence_diagnosis(needle, hay, count):
     positions, cursor = [], 0
     while len(positions) < 8:
@@ -452,9 +504,9 @@ def _anchor_occurrence_diagnosis(needle, hay, count):
         positions.append(found)
         cursor = found + 1
     lines = [_line_context(hay, p)[0] for p in positions]
-    return ("anchor has %d exact matches at file offsets %s (lines %s); "
+    return ("anchor has %d exact matches at file lines %s; "
             "ambiguous anchor, so no mutation was applied" %
-            (count, positions, lines))
+            (count, lines))
 
 
 def _create_path_error(name, worktree):
@@ -481,11 +533,12 @@ def _create_path_error(name, worktree):
 def apply_mutations(mutations, worktree):
 
     """Mutation-apply gate (§4): each anchor must occur exactly once
-    (trailing-whitespace-normalized); 0 or >1 → loud fail naming file +
-    anchor prefix. Mutations apply in array order, each on the previous
-    result. No auto-repair — an anchor miss is a genuine model failure the
-    gate records, never fixes (L-008). Files are written only if every
-    mutation matches.
+    (trailing-whitespace-normalized); 0 → loud fail naming file + anchor
+    prefix + a verbatim real-file snippet around the anchor's target line,
+    >1 → occurrence lines — diagnostics, never auto-repair (an anchor miss
+    is a genuine model failure the gate records, never fixes, L-008).
+    Mutations apply in array order, each on the previous result. Files are
+    written only if every mutation matches.
 
     Returns (ok, detail, results); results is the per-mutation evidence
     {file, anchor_count, applied, error} — every rung recorded, never only
@@ -530,8 +583,13 @@ def apply_mutations(mutations, worktree):
             diagnosis = (_anchor_miss_diagnosis(needle, hay) if count == 0 else
                          _anchor_occurrence_diagnosis(needle, hay, count))
             row["diagnosis"] = diagnosis
-            return False, ("mutation-apply: %s: anchor occurs %d times (expected 1), "
-                           "anchor prefix: %r; %s" %
+            if count == 0:
+                # snippet first: the [:500] event truncation must carry it
+                return False, ("mutation-apply: %s: anchor not found "
+                               "(expected 1); %s; anchor prefix: %r" %
+                               (name, diagnosis, m["find"][:60])), results
+            return False, ("mutation-apply: %s: anchor occurs %d times "
+                           "(expected 1), anchor prefix: %r; %s" %
                            (name, count, m["find"][:60], diagnosis)), results
 
         start = hay.index(needle)

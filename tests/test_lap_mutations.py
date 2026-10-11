@@ -100,10 +100,40 @@ class TestApplyMutations(unittest.TestCase):
             [mut("app.py", "x = 42", "x = 2")], self.dir)
         self.assertFalse(ok)
         self.assertIn("app.py", detail)
-        self.assertIn("0 times", detail)
+        self.assertIn("anchor not found", detail)
         self.assertIn("x = 42", detail)
         self.assertEqual(open(os.path.join(self.dir, "app.py")).read(), "x = 1\ny = 1\n")
         self.assertEqual(results[0]["applied"], False)
+
+    def test_anchor_miss_detail_carries_real_file_snippet(self):
+        # 9801: the model's anchor had 2 blank lines before the class line,
+        # the real file has 3 — the feedback must show the real bytes.
+        with open(os.path.join(self.dir, "app.py"), "w") as f:
+            f.write("import os\n\n\n\nclass TestT:\n    pass\n")
+        ok, detail, results = lap.apply_mutations(
+            [mut("app.py", "import os\n\n\nclass TestT:\n", "class TestT:  # x\n")],
+            self.dir)
+        self.assertFalse(ok)
+        self.assertIn("anchor not found", detail)
+        self.assertIn("anchor prefix", detail)
+        # snippet: real-file line numbers + verbatim content, blank lines as ''
+        self.assertIn("file lines 2-7", detail)
+        self.assertIn("class TestT:", detail)
+        self.assertIn("2: ''", detail)
+        # explicit blank-line-delta callout
+        self.assertIn("blank line", detail)
+        # diagnosis lands in the per-mutation evidence too
+        self.assertIn("file lines", results[0]["diagnosis"])
+        self.assertEqual(open(os.path.join(self.dir, "app.py")).read(),
+                         "import os\n\n\n\nclass TestT:\n    pass\n")
+
+    def test_duplicate_anchor_detail_names_occurrence_lines(self):
+        with open(os.path.join(self.dir, "app.py"), "w") as f:
+            f.write("x = 1\nx = 1\nz = 1\n")
+        ok, detail, _ = lap.apply_mutations([mut("app.py", "x = 1", "x = 2")], self.dir)
+        self.assertFalse(ok)
+        self.assertIn("2 times", detail)
+        self.assertIn("lines [1, 2]", detail)
 
     def test_near_miss_localizes_first_divergence(self):
         actual = 'state["issues"][str(claim["issue"])] ["disposition"] = "merged"'
