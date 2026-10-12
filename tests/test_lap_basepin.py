@@ -219,15 +219,40 @@ class TestOracleRedAtBase(BasePinScenario):
         self.assertEqual(cm.exception.gate, "base-pin")
 
     def test_oracle_red_at_base_proceeds_unchanged(self):
-        # RED (exit 1) is the expected state; the worktree is left
-        # untouched at the base checkout
+        # RED (exit 1) with the NS-ORACLE-RED sentinel on stdout is the
+        # expected state; the worktree is left untouched at the base checkout
         self.set_oracle(self.write_oracle(
-            "#!/bin/sh\n[ \"$(cat app.py)\" = \"x = 1\\n\" ] || exit 1\n"))
+            "#!/bin/sh\necho %s\n[ \"$(cat app.py)\" = \"x = 1\\n\" ]"
+            " || exit 1\n" % lap.RED_SENTINEL))
         path = lap.worktree_for(self.ISSUE)
         self.assertEqual(path, self.path)
         self.assertEqual(self.worktree_head(), self.old_sha)
         with open(os.path.join(self.path, "app.py")) as f:
             self.assertEqual(f.read(), "x = 1\n")
+
+    def test_oracle_red_without_sentinel_fails_closed(self):
+        # F10c: the bank oracles are `#!/bin/sh ... exec python check_*.py`
+        # wrappers whose checkers import the product at top level outside any
+        # try — a broken venv / missing module exits 1 as a harness crash.
+        # Exit 1 WITHOUT the NS-ORACLE-RED sentinel on stdout must never read
+        # as verified RED.
+        self.set_oracle(self.write_oracle("#!/bin/sh\nexit 1\n"))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn(lap.RED_SENTINEL, str(cm.exception))
+        self.assertIn("harness crash", str(cm.exception))
+        self.assertIn("verified RED", str(cm.exception))
+        self.assertEqual(cm.exception.gate, "base-pin")
+
+    def test_oracle_red_sentinel_on_stderr_not_stdout_fails_closed(self):
+        # F10c: the sentinel must be on STDOUT — a stderr-only match (or any
+        # other channel confusion) is not the contract and fails closed
+        self.set_oracle(self.write_oracle(
+            "#!/bin/sh\necho %s >&2\nexit 1\n" % lap.RED_SENTINEL))
+        with self.assertRaises(lap.BasePinError) as cm:
+            lap.worktree_for(self.ISSUE)
+        self.assertIn("without the %s sentinel" % lap.RED_SENTINEL,
+                      str(cm.exception))
 
     def test_oracle_harness_error_fails_closed(self):
         # F10b: exit 2 is the oracle-contract harness-error code; a broken
@@ -251,7 +276,8 @@ class TestOracleRedAtBase(BasePinScenario):
         # the oracle runs with candidate_env(): kernel-config variables are
         # scrubbed, and cwd is the base worktree
         self.set_oracle(self.write_oracle(
-            '#!/bin/sh\necho "$PWD|$PRODUCT_REPO|$F10_PROBE" > envdump.txt\nexit 1\n'))
+            '#!/bin/sh\necho "$PWD|$PRODUCT_REPO|$F10_PROBE" > envdump.txt\n'
+            'echo %s\nexit 1\n' % lap.RED_SENTINEL))
         os.environ["PRODUCT_REPO"] = "/leaked/product/repo"
         self.addCleanup(os.environ.pop, "PRODUCT_REPO", None)
         os.environ["F10_PROBE"] = "passes-through"

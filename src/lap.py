@@ -169,9 +169,14 @@ def _base_pin_assert(repo, path, declared_sha):
 
 
 # The bank oracle contract (oracle-9803.sh): exit 0 = PASS (GREEN),
-# 1 = FAIL (RED), 2 = harness error. RED at base is the only acceptable
-# non-zero; anything else means the oracle itself is broken.
+# 1 = FAIL (RED) with the NS-ORACLE-RED sentinel line on stdout, 2 = harness
+# error. Exit 1 alone is NOT verified RED: the bank oracles are `#!/bin/sh
+# ... exec python check_*.py` wrappers whose checkers import the product at
+# top level outside any try, so a broken venv / missing module exits 1 as a
+# harness crash. Genuine RED must print the sentinel immediately before
+# exiting 1; exit 1 without it fails closed.
 RED_EXIT = 1
+RED_SENTINEL = "NS-ORACLE-RED"
 
 
 def _oracle_red_at_base(path):
@@ -179,12 +184,15 @@ def _oracle_red_at_base(path):
     checkout BEFORE any paid call. Exit 0 = GREEN = the base already contains
     the fix = a vacuous instance (9803 secondary probe: pre-tainted
     origin/main gave declared == checkout == fixed content, silently false
-    green). Exit 1 is the expected RED. Any other exit (2 = harness error,
-    signal death, ...) means the oracle itself is broken and fails closed —
-    a crashed oracle must never read as verified RED; a set-but-unusable
-    oracle (missing, not executable, timeout) also fails closed. Runs with
-    candidate_env() so the oracle never sees kernel-config variables (same
-    scrub as verify)."""
+    green). Exit 1 is RED only when the stdout carries RED_SENTINEL
+    (NS-ORACLE-RED); exit 1 without it is the harness-crash class (checker
+    import outside any try exits 1 on a broken venv / missing module) and
+    fails closed. Any other exit (2 = harness error, signal death, ...)
+    means the oracle itself is broken and fails closed — a crashed oracle
+    must never read as verified RED; a set-but-unusable oracle (missing,
+    not executable, timeout) also fails closed. Runs with candidate_env()
+    so the oracle never sees kernel-config variables (same scrub as
+    verify)."""
     if not ORACLE:
         return
     exe = os.path.expanduser(ORACLE)
@@ -198,6 +206,14 @@ def _oracle_red_at_base(path):
         raise BasePinError("FACTORY_ORACLE %s timed out at base (fail closed)"
                            % ORACLE)
     if r.returncode == RED_EXIT:
+        if RED_SENTINEL not in r.stdout:
+            raise BasePinError(
+                "FACTORY_ORACLE %s exited 1 without the %s sentinel on "
+                "stdout — possible harness crash (checker import outside "
+                "try), refusing to treat as verified RED (fail closed)"
+                % (ORACLE, RED_SENTINEL))
+        print("[base-pin] oracle RED at base confirmed: exit 1 with "
+              "%s sentinel matched" % RED_SENTINEL)
         return
     if r.returncode == 0:
         raise BasePinError(
