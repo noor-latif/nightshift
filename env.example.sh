@@ -70,6 +70,10 @@
 # Set to an ABSOLUTE path of an executable oracle; worktree_for() runs it at
 # the base checkout BEFORE any paid call and fails the lap operational
 # (gate=base-pin) if it exits 0 — GREEN at base = vacuous instance.
+# Genuine RED = exit 1 AND the line NS-ORACLE-RED on stdout immediately before
+# exiting; exit 1 WITHOUT the sentinel fails the lap closed at base-pin (reads
+# as a possible harness crash — checker imports outside try exit 1 on a broken
+# venv). Any other exit = harness error, fail-closed.
 # export FACTORY_ORACLE=""
 
 # ---------------------------------------------------------------------------
